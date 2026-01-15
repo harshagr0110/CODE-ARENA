@@ -1,11 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
-import { getRoom } from "@/lib/room-manager"
 import { executeCode } from "@/lib/piston"
 import { prisma } from "@/lib/prisma"
-import * as socketClient from 'socket.io-client'
 
-const socket = socketClient.connect('http://localhost:3001')
+interface TestCase {
+  input: string
+  expectedOutput: string
+  explanation?: string
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,43 +17,39 @@ export async function POST(request: NextRequest) {
     const { roomId, code, language = "javascript", feedback, isCorrect, questionId } = await request.json()
     if (!roomId || !code) return NextResponse.json({ error: "Room ID and code are required" }, { status: 400 })
 
-    // Get room from memory or database
-    let room = getRoom(roomId)
-    
-    if (!room) {
-      const dbRoom = await prisma.room.findUnique({ 
-        where: { id: roomId }
-      });
-      
-      if (dbRoom && dbRoom.status === "in_progress") {
-        room = dbRoom as any;
-        if (room) {
-          room.submissions = [];
-        }
-      }
-    }
+    // Get room with current game
+    const room = await prisma.room.findUnique({ 
+      where: { id: roomId }
+    })
     
     if (!room || room.status !== "in_progress") {
       return NextResponse.json({ error: "Room not found or game not active" }, { status: 400 })
     }
     
-    if (!room.submissions) room.submissions = []
+    // Get current game
+    const game = await prisma.game.findFirst({
+      where: {
+        roomId: roomId,
+        endedAt: undefined
+      }
+    })
     
-    const existingSubmission = room.submissions.find((sub: any) => sub.userId === user.id)
-    if (existingSubmission) {
-      return NextResponse.json({ error: "You have already submitted a solution" }, { status: 400 })
+    if (!game) {
+      return NextResponse.json({ error: "No active game found" }, { status: 400 })
     }
     
-    // Try to get question from room or fetch directly by questionId
-    let question = room.question;
-    if (!question && questionId) {
-      question = await prisma.question.findUnique({
-        where: { id: questionId }
-      });
+    // Get question
+    const qId = questionId || game.questionId
+    if (!qId) {
+      return NextResponse.json({ error: "No question associated with this game" }, { status: 400 })
     }
+    
+    const question = await prisma.question.findUnique({
+      where: { id: qId }
+    })
     
     if (!question) {
-      return NextResponse.json({ error: "No question associated with this room" }, { status: 400 })
+      return NextResponse.json({ error: "Question not found" }, { status: 400 })
     }
 
     let evaluation = {
@@ -71,9 +69,11 @@ export async function POST(request: NextRequest) {
     } else {
       try {
         // Parse test cases
-        let testCases = question.testCases;
-        if (typeof testCases === 'string') {
-          testCases = JSON.parse(testCases);
+        let testCases: TestCase[] = []
+        if (typeof question.testCases === 'string') {
+          testCases = JSON.parse(question.testCases)
+        } else if (Array.isArray(question.testCases)) {
+          testCases = question.testCases as unknown as TestCase[]
         }
         
         // Execute code against test cases
@@ -95,93 +95,67 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Calculate score based on correctness and execution time
+    // Calculate score based on correctness, execution time, and code length
     let score = 0
+    let codeLength = code.trim().length
+
     if (evaluation.isCorrect) {
+      // Base score for correct solution
       score = 100
-      // Bonus points for faster execution (up to 20 extra points)
-      if (evaluation.executionTime < 1000) { // Less than 1 second
-        score += Math.max(0, 20 - Math.floor(evaluation.executionTime / 50))
+
+      // Speed bonus: up to 30 points for fast execution
+      if (evaluation.executionTime < 100) {
+        score += 30 // Perfect speed
+      } else if (evaluation.executionTime < 500) {
+        score += 20 // Good speed
+      } else if (evaluation.executionTime < 1000) {
+        score += 10 // Acceptable speed
       }
-    }
 
-    // In-memory submission creation
-    const submission = {
-      id: crypto.randomUUID(),
-      roomId,
-      userId: user.id,
-      code: code.trim(),
-      language,
-      isCorrect: evaluation.isCorrect,
-      feedback: evaluation.feedback,
-      executionTime: evaluation.executionTime,
-      score: score,
-    }
-    room.submissions.push(submission)
-
-    // In-memory game logic for all modes
-    const allUserIds = [room.hostId, ...room.participants.filter((p: any) => p.id !== room.hostId).map((p: any) => p.id)]
-    const mode = room.mode || 'normal'
-    const submissionCount = room.submissions.length
-
-    if (mode === 'normal') {
-      // Everyone solves the same question, fastest correct wins
-      if (submissionCount === allUserIds.length) {
-        room.status = "finished"
-        room.endedAt = new Date()
-        socket.emit('game-ended', { roomId, gameId: roomId })
-      } else {
-        socket.emit('submission-update', {
-          newSubmission: { userId: user.id, result: evaluation, timestamp: new Date() },
-        })
-      }
-    } else if (mode === 'shortest') {
-      // Shortest code wins (code golf)
-      if (submissionCount === allUserIds.length) {
-        const correctSubs = room.submissions.filter((s: any) => s.isCorrect)
-        let winnerId = null
-        let minLen = Infinity
-        for (const sub of correctSubs) {
-          if (sub.code.length < minLen) {
-            minLen = sub.code.length
-            winnerId = sub.userId
-          }
-        }
-        room.status = "finished"
-        room.endedAt = new Date()
-        room.winnerId = winnerId
-        socket.emit('game-ended', { roomId, gameId: roomId })
-      } else {
-        socket.emit('submission-update', {
-          newSubmission: { userId: user.id, result: evaluation, timestamp: new Date() },
-        })
+      // Code quality: slight bonus for concise code (max 10 points)
+      if (codeLength < 200) {
+        score += Math.min(10, Math.floor((200 - codeLength) / 20))
       }
     } else {
-      // Default case for any other mode
-      if (submissionCount === allUserIds.length) {
-        const correctSubs = room.submissions.filter((s: any) => s.isCorrect)
-        let winnerId = null
-        if (correctSubs.length > 0) {
-          // Winner is the first correct submission
-          winnerId = correctSubs[0].userId
-        }
-        room.status = "finished"
-        room.endedAt = new Date()
-        room.winnerId = winnerId
-        socket.emit('game-ended', { roomId, gameId: roomId })
-      } else {
-        socket.emit('submission-update', {
-          newSubmission: { userId: user.id, result: evaluation, timestamp: new Date() },
-        })
+      // Partial credit for incorrect solutions
+      // Check if code at least compiles/runs
+      if (evaluation.feedback !== "Code execution failed") {
+        score = 20 // Partial credit for attempt
       }
     }
+
+    // Create submission in database
+    const submission = await prisma.submission.create({
+      data: {
+        id: crypto.randomUUID(),
+        gameId: game.id,
+        userId: user.id,
+        questionId: game.questionId,
+        code: code.trim(),
+        language,
+        isCorrect: evaluation.isCorrect,
+        feedback: evaluation.feedback,
+        executionTime: evaluation.executionTime,
+        score: score,
+      }
+    })
+
+    // Emit real-time update
+    // TODO: Emit real-time update via Socket.io server (implement in socket-server.js)
+    // socket.emit('submission-update', { roomId, userId, result, score, timestamp })
 
     return NextResponse.json({
       message: "Submission evaluated successfully",
-      submission,
+      submission: {
+        id: submission.id,
+        userId: submission.userId,
+        isCorrect: submission.isCorrect,
+        score: submission.score,
+        feedback: submission.feedback,
+        executionTime: submission.executionTime
+      },
     })
   } catch (error) {
-    console.error("Error executing code:", error);
     return NextResponse.json(
       { 
         error: "Code execution failed",

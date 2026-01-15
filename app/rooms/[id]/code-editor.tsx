@@ -144,41 +144,35 @@ export function CodeEditor({ roomId, userId, question: initialQuestion }: CodeEd
     };
   }, [])
 
-  // Simplified continuous write mode - just basic check
+  // Simplified continuous write mode - check if code is being written
   useEffect(() => {
     if (mode !== 'contwrite' || submitted) return
-    
-    // Simple tracking of last code length
-    let lastLength = code.length;
-    
+
+    let lastLength = code.length
+
     const interval = setInterval(() => {
       if (code.length > lastLength) {
-        lastLength = code.length;
+        lastLength = code.length
       } else {
-        setDisqualified(true);
-        if (socket) {
-          socket.emit('disqualified', { roomId, userId });
-        }
-        clearInterval(interval);
+        // Code length not increasing = disqualified
+        setDisqualified(true)
+        clearInterval(interval)
       }
-    }, 10000);
-    
-    return () => clearInterval(interval);
-  }, [mode, submitted, code.length, socket, roomId, userId])
+    }, 10000)
+
+    return () => clearInterval(interval)
+  }, [mode, submitted, code.length])
 
   // Handle auto-submission when timer expires
   const handleAutoSubmit = async () => {
-    if (submitted) return;
-    
+    if (submitted) return
+
     try {
-      setLoading(true);
-      
-      // Submit whatever code is currently in the editor
+      setLoading(true)
+
       const response = await fetch("/api/submissions", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           roomId,
           code: code.trim() || "// Time expired - no solution submitted",
@@ -186,35 +180,25 @@ export function CodeEditor({ roomId, userId, question: initialQuestion }: CodeEd
           questionId: question?.id,
           timeExpired: true,
         }),
-      });
+      })
 
-      // Emit socket events for time expired and game ended
+      // Emit socket event for submission
       if (socket && isConnected) {
-        // First notify all clients that time has expired
-        socket.emit("time-expired", { roomId });
-        
-        // Then emit code submission event 
-        socket.emit("code-submitted", { roomId, userId, timeExpired: true });
-        
-        // Finally emit game-ended event to trigger navigation to results page
-        // We use a slight delay to ensure all submissions are processed
-        setTimeout(() => {
-          socket.emit("game-ended", { roomId });
-        }, 1000);
+        socket.emit("code-submitted", { roomId, userId })
       }
-      
-      setSubmitted(true);
-      
-      // Navigate to results page after a slight delay
+
+      setSubmitted(true)
+
+      // Navigate to results
       setTimeout(() => {
-        router.push(`/rooms/${roomId}/results`);
-      }, 1500);
+        router.push(`/rooms/${roomId}/results`)
+      }, 500)
     } catch (error) {
-      // Silent fail
+      console.error("Auto-submission failed:", error)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -224,12 +208,10 @@ export function CodeEditor({ roomId, userId, question: initialQuestion }: CodeEd
     }
 
     setLoading(true)
-    try {      
+    try {
       const response = await fetch("/api/submissions", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           roomId,
           code: code.trim(),
@@ -238,17 +220,32 @@ export function CodeEditor({ roomId, userId, question: initialQuestion }: CodeEd
         }),
       })
 
-      const data = await response.json()
+      const submissionData = await response.json()
 
-      // Emit socket event
+      // Emit socket event with isCorrect flag
       if (socket && isConnected) {
-        socket.emit("code-submitted", { roomId, userId });
+        socket.emit("code-submitted", {
+          roomId,
+          userId,
+          isCorrect: submissionData.submission?.isCorrect,
+          score: submissionData.submission?.score,
+        })
+
+        // If solution is correct, check if this is the first correct solution (winner)
+        if (submissionData.submission?.isCorrect) {
+          socket.emit("game-winner", {
+            roomId,
+            winnerId: userId,
+            winnerName: "You",
+            score: submissionData.submission?.score,
+          })
+        }
       }
 
       setSubmitted(true)
       router.refresh()
     } catch (error) {
-      // Silent fail
+      console.error("Submission error:", error)
     } finally {
       setLoading(false)
     }

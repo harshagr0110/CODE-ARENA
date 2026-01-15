@@ -9,11 +9,10 @@ import { Code, Menu, X, Trophy, Users, Home } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const navigation = [
-  { name: "Home", href: "/", icon: Home },
-  { name: "Dashboard", href: "/dashboard", icon: Users },
+  { name: "Dashboard", href: "/dashboard", icon: Home },
+  { name: "Rooms", href: "/rooms", icon: Users },
   { name: "Practice", href: "/practice", icon: Code },
   { name: "Leaderboard", href: "/leaderboard", icon: Trophy },
-  { name: "Questions", href: "/questions", icon: Code },
 ]
 
 export function Navbar() {
@@ -28,7 +27,7 @@ export function Navbar() {
           <div className="flex items-center space-x-2">
             <Link href="/" className="flex items-center space-x-2 hover:opacity-80 transition-opacity">
               <Code className="h-8 w-8 text-blue-600 dark:text-blue-400" />
-              <span className="text-xl font-bold text-gray-900 dark:text-white">AI Coding Arena</span>
+              <span className="text-xl font-bold text-gray-900 dark:text-white">Code Arena</span>
             </Link>
           </div>
 

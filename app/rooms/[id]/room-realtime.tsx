@@ -15,28 +15,55 @@ export function RoomRealtime({ roomId, userId, children }: RoomRealtimeProps) {
   const router = useRouter()
 
   useEffect(() => {
-    if (socket && isConnected) {
-      socket.emit("join-room", { roomId, userId })
-      
-      socket.on("game-started", () => {
-        router.refresh()
-      })
-      
-      socket.on("time-expired", () => {
-        router.push(`/rooms/${roomId}/results`)
-      })
-      
-      socket.on("game-ended", () => {
-        router.push(`/rooms/${roomId}/results`)
-      })
+    if (!socket || !isConnected) return
 
-      socket.on("submission-update", () => router.refresh())
-      socket.on("player-joined", () => router.refresh())
-      socket.on("player-left", () => router.refresh())
+    // Join room
+    socket.emit("join-room", { roomId, userId })
 
-      return () => {
-        socket.emit("leave-room", { roomId })
-      }
+    // Game started - refresh to load question
+    const handleGameStarted = () => {
+      router.refresh()
+    }
+
+    // Time expired - show results
+    const handleTimeExpired = () => {
+      setTimeout(() => {
+        router.push(`/rooms/${roomId}/results`)
+      }, 1000)
+    }
+
+    // Winner announced - navigate to results
+    const handleWinnerAnnounced = () => {
+      setTimeout(() => {
+        router.push(`/rooms/${roomId}/results`)
+      }, 2000)
+    }
+
+    // Player joined or left
+    const handlePlayerChange = () => {
+      router.refresh()
+    }
+
+    // Submission update
+    const handleSubmission = () => {
+      router.refresh()
+    }
+
+    socket.on("game-started", handleGameStarted)
+    socket.on("time-expired", handleTimeExpired)
+    socket.on("winner-announced", handleWinnerAnnounced)
+    socket.on("player-joined", handlePlayerChange)
+    socket.on("player-left", handlePlayerChange)
+    socket.on("submission-update", handleSubmission)
+
+    return () => {
+      socket.emit("leave-room", { roomId })
+      socket.off("game-started", handleGameStarted)
+      socket.off("time-expired", handleTimeExpired)
+      socket.off("winner-announced", handleWinnerAnnounced)
+      socket.off("player-joined", handlePlayerChange)
+      socket.off("player-left", handlePlayerChange)
+      socket.off("submission-update", handleSubmission)
     }
   }, [socket, isConnected, roomId, userId, router])
 

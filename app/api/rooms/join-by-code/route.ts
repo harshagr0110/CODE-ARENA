@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
   if (!room) return NextResponse.json({ error: "Room not found" }, { status: 404 })
   let participants = []
   try { participants = JSON.parse(typeof room.participants === "string" ? room.participants : "[]") } catch { participants = [] }
-  if (participants.length >= 10) return NextResponse.json({ error: "Room is full" }, { status: 400 })
+  if (participants.length >= (room.maxPlayers || 10)) return NextResponse.json({ error: "Room is full" }, { status: 400 })
   if (room.status !== "waiting") return NextResponse.json({ error: "Room is not accepting players" }, { status: 400 })
   if (!participants.some((p: any) => p.id === user.id)) {
     participants.push({ id: user.id, username: user.username })

@@ -44,16 +44,26 @@ export default function RoomsPage() {
         <div className="container mx-auto px-4 py-8">
           <div className="flex justify-between items-center mb-8">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">Active Game Rooms</h1>
-              <p className="text-gray-600">Join a room by code or create your own</p>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">Browse Rooms</h1>
+              <p className="text-gray-600">Join an active room or create your own</p>
             </div>
-            <Link href="/rooms/create">
-              <Button>Create Room</Button>
-            </Link>
+            <div className="flex gap-3">
+              <Link href="/rooms/create">
+                <Button>Create Room</Button>
+              </Link>
+            </div>
           </div>
-          <div className="grid lg:grid-cols-4 gap-6 mb-8">
-            <JoinByCode />
-          </div>
+
+          {/* Join by Code Card */}
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle className="text-lg">Quick Join</CardTitle>
+              <CardDescription>Have a room code? Enter it here to join instantly</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <JoinByCode />
+            </CardContent>
+          </Card>
           <div className="grid gap-6">
             {activeRooms.length === 0 ? (
               <Card>

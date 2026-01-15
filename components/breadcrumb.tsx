@@ -19,7 +19,7 @@ export function Breadcrumb({ items, className }: BreadcrumbProps) {
   const pathname = usePathname()
   
   // Generate breadcrumb items from pathname if not provided
-  const breadcrumbItems = items || generateBreadcrumbItems(pathname)
+  const breadcrumbItems = items || (pathname ? generateBreadcrumbItems(pathname) : [])
 
   if (breadcrumbItems.length <= 1) {
     return null

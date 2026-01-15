@@ -22,27 +22,10 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     }
     const isHost = room.hostId === user.id
     if (isHost) {
-      // Save game result before deleting room (if needed)
-      let players: any[] = [];
-      if (Array.isArray(room.participants)) {
-        players = room.participants as any[];
-      } else if (typeof room.participants === 'string') {
-        try {
-          players = JSON.parse(room.participants);
-        } catch {
-          players = [];
-        }
-      }
-      await prisma.game.create({
-        data: {
-          roomId: room.id,
-          winnerId: user.id,
-          winnerName: user.username,
-          players: players,
-        },
-      })
+      // If host leaves, just delete the room (don't create a game)
+      // Any active games will be cleaned up via cascade delete
       await prisma.room.delete({ where: { id: roomId } })
-      return NextResponse.json({ message: "Host left, room deleted and game saved" })
+      return NextResponse.json({ message: "Host left, room deleted" })
     } else {
       participants = participants.filter((p: any) => p.id !== user.id)
       await prisma.room.update({ where: { id: roomId }, data: { participants: JSON.stringify(participants) } })

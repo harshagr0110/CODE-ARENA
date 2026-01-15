@@ -2,11 +2,17 @@ import { type NextRequest, NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 
+interface Props {
+  params: Promise<{
+    id: string
+  }>
+}
+
 export async function GET(
   request: NextRequest,
-  context: { params: { id: string } } | { params: Promise<{ id: string }> }
+  { params }: Props
 ) {
-  const { id: roomId } = await (context.params as any);
+  const { id: gameId } = await params;
   try {
     const user = await getCurrentUser();
     
@@ -14,63 +20,64 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get room details
-    const room = await prisma.room.findUnique({
-      where: { id: roomId },
-    });
-
-    if (!room) {
-      return NextResponse.json({ error: "Room not found" }, { status: 404 });
-    }
-
-    // Find the latest game for this room
-    const game = await prisma.game.findFirst({
-      where: { roomId: roomId }
+    // Get game details with submissions and question
+    const game = await prisma.game.findUnique({
+      where: { id: gameId },
+      include: {
+        submissions: {
+          include: {
+            user: true
+          }
+        },
+        question: true,
+        room: true
+      }
     });
 
     if (!game) {
-      return NextResponse.json({ error: "No game found for this room" }, { status: 404 });
+      return NextResponse.json({ error: "Game not found" }, { status: 404 });
     }
 
-    // Since our schema doesn't track submissions with roomId directly,
-    // we'll create mock submissions based on players data in the game
-    let submissions = [];
-    try {
-      const gamePlayers = Array.isArray(game.players) 
-        ? game.players as any[] 
-        : JSON.parse(game.players?.toString() || '[]');
-      
-      // Convert player data to submissions format
-      submissions = gamePlayers.map((player: any) => ({
-        id: player.id || `player-${Math.random().toString(36).substring(2, 9)}`,
-        userId: player.id,
-        username: player.username || 'Player',
-        language: player.language || 'javascript',
-        isCorrect: player.isCorrect || false,
-        executionTime: player.executionTime || null,
-        code: player.code || '',
-        submittedAt: new Date(player.submittedAt || game.endedAt)
-      }));
-    } catch (error) {
-      console.error("Error parsing game players:", error);
-      submissions = [];
-    }
+    // Format submissions
+    const submissions = game.submissions.map((submission) => ({
+      id: submission.id,
+      userId: submission.userId,
+      username: submission.user.username,
+      language: submission.language,
+      isCorrect: submission.isCorrect,
+      executionTime: submission.executionTime,
+      score: submission.score,
+      feedback: submission.feedback,
+      submittedAt: submission.submittedAt,
+      code: submission.code
+    }));
 
-    // We already have our submissions formatted from the game players
-    // Just need to ensure we have the correct data structure
+    // Get winner info
+    const winner = game.winnerId 
+      ? await prisma.user.findUnique({ where: { id: game.winnerId } })
+      : null;
     
     return NextResponse.json({
       room: {
-        id: room.id,
-        joinCode: room.joinCode,
-        status: room.status,
-        hostId: room.hostId,
+        id: game.room.id,
+        joinCode: game.room.joinCode,
+        status: game.room.status,
+        hostId: game.room.hostId,
       },
       game: {
         id: game.id,
+        questionId: game.questionId,
+        difficulty: game.difficulty,
         winnerId: game.winnerId,
-        winnerName: game.winnerName,
+        winnerName: winner?.username || null,
+        startedAt: game.startedAt,
         endedAt: game.endedAt,
+      },
+      question: {
+        id: game.question.id,
+        title: game.question.title,
+        description: game.question.description,
+        difficulty: game.question.difficulty,
       },
       submissions: submissions,
     });

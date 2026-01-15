@@ -10,7 +10,7 @@ import { RoomClient } from "./room-client"
 import { RoomRealtime } from "./room-realtime"
 import { CodeEditor } from "./code-editor"
 import { RoomActions } from "./room-actions"
-import { StartGameButton } from "./start-game-button"
+import StartGameButton from "./start-game-button"
 
 export default function RoomPage() {
   const params = useParams() as { id?: string }
@@ -134,21 +134,28 @@ export default function RoomPage() {
               {/* Room header with info and actions */}
               <div className="flex items-start justify-between mb-6">
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-3 mb-2">
                     <h1 className="text-3xl font-bold text-gray-900">
                       {room.name || `Room ${room.joinCode}`}
                     </h1>
-                    <Badge variant={isWaiting ? "outline" : "default"}>
-                      {isWaiting ? "Waiting" : "In Progress"}
+                    <Badge variant={isWaiting ? "outline" : isGameInProgress ? "default" : "secondary"}>
+                      {isWaiting ? "Waiting" : isGameInProgress ? "In Progress" : "Finished"}
                     </Badge>
                   </div>
-                  <p className="text-gray-600">
-                    Code: <b>{room.joinCode}</b> • Players: {participants.length}
-                    {room.maxPlayers ? ` / ${room.maxPlayers}` : ""}
-                  </p>
+                  <div className="flex items-center gap-4 text-sm text-gray-600">
+                    <div className="flex items-center gap-1">
+                      <span className="font-medium">Join Code:</span>
+                      <code className="px-2 py-1 bg-blue-50 text-blue-700 rounded font-mono font-bold">
+                        {room.joinCode}
+                      </code>
+                    </div>
+                    <div>
+                      <span className="font-medium">Players:</span> {participants.length}
+                      {room.maxPlayers ? ` / ${room.maxPlayers}` : ""}
+                    </div>
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button onClick={handleRefresh} variant="outline">Refresh</Button>
                   <RoomActions roomId={roomId} isHost={isHost} />
                 </div>
               </div>
@@ -198,37 +205,6 @@ export default function RoomPage() {
                       />
                     </div>
                   )}
-
-                  {/* Game info if in progress */}
-                  {isParticipant && isGameInProgress && (
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Game Info</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-2">
-                          <div className="text-sm">
-                            <span className="font-medium">Mode: </span>
-                            {room.mode || "Standard"}
-                          </div>
-                          <div className="text-sm">
-                            <span className="font-medium">Difficulty: </span>
-                            {room.difficulty || "Medium"}
-                          </div>
-                          <div className="text-sm">
-                            <span className="font-medium">Tier: </span>
-                            {(room.tier || "Beginner").charAt(0).toUpperCase() + (room.tier || "beginner").slice(1)}
-                          </div>
-                          {room.startedAt && (
-                            <div className="text-sm">
-                              <span className="font-medium">Started: </span>
-                              {new Date(room.startedAt).toLocaleTimeString()}
-                            </div>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
                 </div>
 
                 {/* Right column - Game or waiting area */}
@@ -262,32 +238,28 @@ export default function RoomPage() {
                       ) : (
                         <Card>
                           <CardHeader>
-                            <CardTitle>Question Not Found</CardTitle>
+                            <CardTitle>Loading Challenge...</CardTitle>
                           </CardHeader>
-                          <CardContent className="text-center py-6">
-                            <p className="text-gray-600 mb-4">The coding challenge couldn't be loaded.</p>
-                            <div className="space-y-4">
-                              <div className="bg-gray-50 p-4 rounded-md text-xs text-left">
-                                <pre>Room Status: {room?.status}</pre>
-                                <pre>Has Question ID: {room?.questionId ? "Yes" : "No"}</pre>
-                                <pre>Has Question Object: {question ? "Yes" : "No"}</pre>
-                              </div>
-                              <Button 
-                                onClick={handleRefresh} 
-                                variant="outline" 
-                                size="sm"
-                              >
-                                Try Again
-                              </Button>
+                          <CardContent className="text-center py-10">
+                            <div className="animate-pulse space-y-4">
+                              <div className="h-4 bg-gray-200 rounded w-3/4 mx-auto"></div>
+                              <div className="h-4 bg-gray-200 rounded w-1/2 mx-auto"></div>
                             </div>
+                            <p className="text-gray-500 mt-4">Please wait while we load your coding challenge...</p>
                           </CardContent>
                         </Card>
                       )}
                     </>
                   ) : (
                     <Card>
-                      <CardContent className="py-10 text-center">
-                        Game has ended. Check results page for details.
+                      <CardHeader>
+                        <CardTitle>Game Ended</CardTitle>
+                      </CardHeader>
+                      <CardContent className="text-center py-10">
+                        <p className="text-gray-600 mb-4">This game has finished.</p>
+                        <Button onClick={() => router.push(`/rooms/${roomId}/results`)}>
+                          View Results
+                        </Button>
                       </CardContent>
                     </Card>
                   )}

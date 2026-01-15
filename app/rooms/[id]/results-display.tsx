@@ -16,76 +16,54 @@ interface Submission {
 }
 
 interface ResultsDisplayProps {
-  roomId: string;
-  gameMode: string;
+  roomId: string
+  gameMode: string
 }
 
 export function ResultsDisplay({ roomId, gameMode }: ResultsDisplayProps) {
-  const [results, setResults] = useState<Submission[]>([]);
+  const [results, setResults] = useState<Submission[]>([])
   const [gameInfo, setGameInfo] = useState<{
-    winnerName?: string;
-    winnerId?: string;
-    roomName?: string;
-    difficulty?: string;
-    tier?: string;
-  }>({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+    roomName?: string
+    difficulty?: string
+  }>({})
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    // Fetch results when component mounts
     const fetchResults = async () => {
       try {
-        setLoading(true);
-        const res = await fetch(`/api/games/${roomId}/results`);
-        if (!res.ok) {
-          throw new Error("Failed to load results");
-        }
-        const data = await res.json();
-        setResults(data.submissions || []);
-        
-        // Store additional game information
+        setLoading(true)
+        const res = await fetch(`/api/games/${roomId}/results`)
+        if (!res.ok) throw new Error("Failed to load results")
+
+        const data = await res.json()
+        setResults(data.submissions || [])
         setGameInfo({
-          winnerName: data.game?.winnerName,
-          winnerId: data.game?.winnerId,
           roomName: data.room?.joinCode,
           difficulty: data.game?.difficulty || "medium",
-          tier: data.game?.tier || "beginner"
-        });
+        })
       } catch (err) {
-        setError("Could not load game results");
+        setError("Could not load game results")
       } finally {
-        setLoading(false);
+        setLoading(false)
       }
-    };
-
-    fetchResults();
-  }, [roomId]);
-
-  // Sort submissions based on game mode
-  const sortedResults = React.useMemo(() => {
-    if (!results || results.length === 0) return [];
-    
-    if (gameMode === 'codegolf') {
-      // Sort by code length (ascending) for code golf mode
-      return [...results].sort((a, b) => {
-        // First by correctness (correct solutions first)
-        if (a.isCorrect && !b.isCorrect) return -1;
-        if (!a.isCorrect && b.isCorrect) return 1;
-        // Then by code length
-        return (a.codeLength || 0) - (b.codeLength || 0);
-      });
-    } else {
-      // Default: sort by submission time (ascending)
-      return [...results].sort((a, b) => {
-        // First by correctness (correct solutions first)
-        if (a.isCorrect && !b.isCorrect) return -1;
-        if (!a.isCorrect && b.isCorrect) return 1;
-        // Then by submission time
-        return new Date(a.submittedAt).getTime() - new Date(b.submittedAt).getTime();
-      });
     }
-  }, [results, gameMode]);
+
+    fetchResults()
+  }, [roomId])
+
+  // Sort submissions by correctness and time
+  const sortedResults = React.useMemo(() => {
+    if (!results || results.length === 0) return []
+
+    return [...results].sort((a, b) => {
+      // Correct solutions first
+      if (a.isCorrect && !b.isCorrect) return -1
+      if (!a.isCorrect && b.isCorrect) return 1
+      // Then by submission time
+      return new Date(a.submittedAt).getTime() - new Date(b.submittedAt).getTime()
+    })
+  }, [results])
 
   if (loading) {
     return (
@@ -135,26 +113,18 @@ export function ResultsDisplay({ roomId, gameMode }: ResultsDisplayProps) {
                 <p className="font-medium">{gameInfo.roomName || roomId}</p>
               </div>
               <div className="bg-gray-50 rounded-md p-3 flex-1">
-                <p className="text-sm text-gray-500">Mode</p>
-                <p className="font-medium capitalize">{gameMode}</p>
-              </div>
-              <div className="bg-gray-50 rounded-md p-3 flex-1">
                 <p className="text-sm text-gray-500">Difficulty</p>
                 <p className="font-medium capitalize">{gameInfo.difficulty || "Medium"}</p>
               </div>
-              <div className="bg-gray-50 rounded-md p-3 flex-1">
-                <p className="text-sm text-gray-500">Tier</p>
-                <p className="font-medium capitalize">{gameInfo.tier || "Beginner"}</p>
-              </div>
             </div>
-            
+
             {hasWinner && (
               <div className="bg-yellow-50 rounded-md p-4 border border-yellow-200">
                 <div className="flex items-center gap-2">
                   <span className="text-2xl">🏆</span>
                   <div>
                     <p className="text-sm text-gray-500">Winner</p>
-                    <p className="font-bold">{winner.username || 'Anonymous'}</p>
+                    <p className="font-bold">{winner.username || "Anonymous"}</p>
                   </div>
                 </div>
               </div>
@@ -162,7 +132,7 @@ export function ResultsDisplay({ roomId, gameMode }: ResultsDisplayProps) {
           </div>
         </CardContent>
       </Card>
-      
+
       {/* Results Table */}
       <Card>
         <CardHeader>
@@ -177,34 +147,39 @@ export function ResultsDisplay({ roomId, gameMode }: ResultsDisplayProps) {
                   <th className="py-2 px-3 text-left">Player</th>
                   <th className="py-2 px-3 text-left">Language</th>
                   <th className="py-2 px-3 text-left">Status</th>
-                  <th className="py-2 px-3 text-left">
-                    {gameMode === 'codegolf' ? 'Characters' : 'Time'}
-                  </th>
+                  <th className="py-2 px-3 text-left">Time</th>
                 </tr>
               </thead>
               <tbody>
                 {sortedResults.map((submission, index) => (
                   <tr key={submission.id} className="border-b hover:bg-gray-50">
                     <td className="py-3 px-3 font-medium">
-                      {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`}
+                      {index === 0
+                        ? "🥇"
+                        : index === 1
+                          ? "🥈"
+                          : index === 2
+                            ? "🥉"
+                            : `#${index + 1}`}
                     </td>
-                    <td className="py-3 px-3">{submission.username || 'Anonymous'}</td>
+                    <td className="py-3 px-3">{submission.username || "Anonymous"}</td>
                     <td className="py-3 px-3">{submission.language}</td>
                     <td className="py-3 px-3">
                       {submission.isCorrect ? (
-                        <Badge variant="outline" className="bg-green-100 text-green-800">Correct</Badge>
+                        <Badge
+                          variant="outline"
+                          className="bg-green-100 text-green-800"
+                        >
+                          Correct
+                        </Badge>
                       ) : (
-                        <Badge variant="destructive" className="bg-red-100 text-red-800">Incorrect</Badge>
+                        <Badge variant="destructive" className="bg-red-100 text-red-800">
+                          Incorrect
+                        </Badge>
                       )}
                     </td>
                     <td className="py-3 px-3">
-                      {gameMode === 'codegolf' ? (
-                        `${submission.codeLength} chars`
-                      ) : (
-                        submission.executionTime ? 
-                        `${submission.executionTime.toFixed(2)}ms` : 
-                        new Date(submission.submittedAt).toLocaleTimeString()
-                      )}
+                      {new Date(submission.submittedAt).toLocaleTimeString()}
                     </td>
                   </tr>
                 ))}
@@ -214,5 +189,5 @@ export function ResultsDisplay({ roomId, gameMode }: ResultsDisplayProps) {
         </CardContent>
       </Card>
     </div>
-  );
+  )
 }

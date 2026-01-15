@@ -36,11 +36,14 @@ export async function GET(request: NextRequest, { params }: Props) {
     
     // Clean test cases
     if (Array.isArray(testCases)) {
-      testCases = testCases.map(tc => ({
-        input: tc.input?.toString() || '',
-        expectedOutput: tc.expectedOutput?.toString() || '',
-        explanation: tc.explanation?.toString()
-      }))
+      testCases = testCases.map((tc: any) => {
+        if (!tc || typeof tc !== 'object') return null
+        return {
+          input: tc.input?.toString() || '',
+          expectedOutput: tc.expectedOutput?.toString() || '',
+          explanation: tc.explanation?.toString()
+        }
+      }).filter(Boolean)
     }
     
     const cleanedQuestion = {

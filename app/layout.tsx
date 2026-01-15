@@ -7,23 +7,23 @@ import { Metadata } from "next"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata : Metadata = {
-  title: "AI Coding Arena - Multiplayer Coding Competitions",
-  description: "Compete in real-time coding challenges powered by AI. Join multiplayer coding battles with instant feedback and smart scoring.",
-  keywords: "coding, competition, multiplayer, AI, programming, challenges, real-time",
-  authors: [{ name: "AI Coding Arena Team" }],
-  creator: "AI Coding Arena",
+  title: "Code Arena - Multiplayer Coding Competitions",
+  description: "Compete in real-time coding challenges. Join multiplayer coding battles with instant feedback and smart scoring.",
+  keywords: "coding, competition, multiplayer, programming, challenges, real-time",
+  authors: [{ name: "Code Arena Team" }],
+  creator: "Code Arena",
   openGraph: {
     type: "website",
     locale: "en_US",
-    url: "https://aicodingarena.com",
-    title: "AI Coding Arena - Multiplayer Coding Competitions",
-    description: "Compete in real-time coding challenges powered by AI",
-    siteName: "AI Coding Arena",
+    url: "https://codearena.com",
+    title: "Code Arena - Multiplayer Coding Competitions",
+    description: "Compete in real-time coding challenges",
+    siteName: "Code Arena",
   },
   twitter: {
     card: "summary_large_image",
-    title: "AI Coding Arena - Multiplayer Coding Competitions",
-    description: "Compete in real-time coding challenges powered by AI",
+    title: "Code Arena - Multiplayer Coding Competitions",
+    description: "Compete in real-time coding challenges",
   },
 }
 

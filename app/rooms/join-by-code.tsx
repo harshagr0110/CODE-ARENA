@@ -30,30 +30,20 @@ export function JoinByCode() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Join by Code</CardTitle>
-        <CardDescription>Enter a room code to join an existing game</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleJoinByCode} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="joinCode">Room Code</Label>
-            <Input
-              id="joinCode"
-              value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value)}
-              placeholder="ABC123"
-              autoComplete="off"
-              maxLength={6}
-              required
-            />
-          </div>
-          <Button type="submit" disabled={loading} className="w-full">
-            {loading ? "Joining..." : "Join Room"}
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+    <form onSubmit={handleJoinByCode} className="flex gap-3">
+      <Input
+        id="joinCode"
+        value={joinCode}
+        onChange={(e) => setJoinCode(e.target.value)}
+        placeholder="Enter room code (e.g., ABC123)"
+        autoComplete="off"
+        maxLength={6}
+        className="flex-1 uppercase"
+        required
+      />
+      <Button type="submit" disabled={loading || !joinCode.trim()}>
+        {loading ? "Joining..." : "Join"}
+      </Button>
+    </form>
   )
 }

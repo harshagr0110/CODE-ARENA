@@ -31,19 +31,24 @@ export async function POST(request: NextRequest) {
     if (attempts >= 10) {
       joinCode = Date.now().toString(36).toUpperCase().slice(-6)
     }
+    
     const room = await prisma.room.create({
       data: {
         hostId: user.id,
         joinCode,
+        name: name || `${user.username}'s Room`,
+        maxPlayers: maxPlayers || 4,
+        mode: mode || "normal",
         status: "waiting",
+        // Store participants as JSON array
         participants: JSON.stringify([
           { id: user.id, username: user.username },
         ]),
       },
     })
+    
     return NextResponse.json(room)
   } catch (error: unknown) {
-    console.error("Error creating room:", error)
     return NextResponse.json(
       {
         error: "Internal server error",

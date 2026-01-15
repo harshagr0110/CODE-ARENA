@@ -16,16 +16,33 @@ export default function ResultsPage() {
   const { socket } = useSocket()
 
   useEffect(() => {
-    // Fetch room details to get the game mode
-    fetch(`/api/rooms/${roomId}`)
-      .then(res => res.json())
-      .then(data => {
-        if (data && data.mode) {
-          setGameMode(data.mode)
+    // Fetch room details and finalize game
+    const initializeResults = async () => {
+      try {
+        // Get room data
+        const roomRes = await fetch(`/api/rooms/${roomId}`)
+        const roomData = await roomRes.json()
+        if (roomData && roomData.mode) {
+          setGameMode(roomData.mode)
         }
+
+        // Get the game ID from room
+        if (roomData && roomData.gameId) {
+          // Call game end endpoint to finalize game and update stats
+          await fetch("/api/games/end", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ roomId, gameId: roomData.gameId })
+          })
+        }
+      } catch (error) {
+        console.error("Error initializing results:", error)
+      } finally {
         setLoading(false)
-      })
-      .catch(() => setLoading(false))
+      }
+    }
+
+    initializeResults()
 
     // Listen for game-ended event
     if (socket) {

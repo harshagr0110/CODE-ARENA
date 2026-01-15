@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation"
 import { getCurrentUser } from "@/lib/auth"
-import { listRooms } from "@/lib/room-manager"
+import { prisma } from "@/lib/prisma"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Trophy, Users, Clock, Target } from "lucide-react"
@@ -18,9 +18,6 @@ export default async function DashboardPage() {
     redirect("/")
   }
 
-  // Debug logging
-  console.log("Dashboard user:", user)
-
   const stats = {
     totalGames: user.gamesPlayed,
     gamesWon: user.gamesWon,
@@ -28,26 +25,32 @@ export default async function DashboardPage() {
     winRate: user.gamesPlayed > 0 ? Math.round((user.gamesWon / user.gamesPlayed) * 100) : 0,
   }
 
-  const allRooms = listRooms();
+  // Fetch active rooms from database
+  const allRooms = await prisma.room.findMany({
+    where: {
+      status: { in: ["waiting", "in_progress"] }
+    },
+    orderBy: {
+      createdAt: 'desc'
+    },
+    take: 20
+  })
+
   const activeRooms = allRooms
     .filter(r => r.status === "waiting")
-    .sort((a, b) => b.createdAt - a.createdAt)
-    .slice(0, 5);
+    .slice(0, 5)
+
   const userCreatedRooms = allRooms
     .filter(r => r.hostId === user.id)
-    .sort((a, b) => b.createdAt - a.createdAt)
-    .slice(0, 5);
-
-  // Debug logging
-  console.log("Dashboard active rooms:", activeRooms)
+    .slice(0, 5)
 
   return (
     <MainLayout>
       <div className="bg-gray-50 min-h-screen">
         <div className="container mx-auto px-4 py-8">
           <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Dashboard</h1>
-            <p className="text-gray-600">Welcome back, {user.username}!</p>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome back, {user.username}!</h1>
+            <p className="text-gray-600">Ready to compete? Join a room or start your own challenge.</p>
           </div>
 
           <div className="flex flex-col items-center mb-8">
@@ -92,9 +95,20 @@ export default async function DashboardPage() {
               )}
             </div>
             {stats.totalGames === 0 && (
-              <div className="mt-6 text-gray-500 flex flex-col items-center">
-                <Trophy className="h-8 w-8 mb-2 text-gray-300" />
-                <span>You haven't played any games yet. Join a room to get started!</span>
+              <div className="mt-6 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-100">
+                <div className="flex items-center justify-center flex-col text-center">
+                  <Trophy className="h-12 w-12 mb-3 text-blue-500" />
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Start Your Coding Journey</h3>
+                  <p className="text-gray-600 mb-4">Compete with others, solve challenges, and climb the leaderboard!</p>
+                  <div className="flex gap-3">
+                    <Link href="/rooms/create">
+                      <Button size="lg">Create Room</Button>
+                    </Link>
+                    <Link href="/rooms">
+                      <Button size="lg" variant="outline">Browse Rooms</Button>
+                    </Link>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -141,20 +155,26 @@ export default async function DashboardPage() {
                     <p className="text-gray-500 text-center py-4">No active rooms available</p>
                   ) : (
                     <div className="space-y-3">
-                      {activeRooms.map((room) => (
-                        <div key={room.id} className="flex items-center justify-between p-3 border rounded-lg">
-                          <div>
-                            <h4 className="font-medium">{room.name}</h4>
-                            <p className="text-sm text-gray-500">
-                              {room.participants.length}/{room.maxPlayers} players
-                            </p>
-                            <p className="text-xs text-gray-400">Host: {room.hostId}</p>
+                      {activeRooms.map((room) => {
+                        let participants: any[] = []
+                        try {
+                          participants = Array.isArray(room.participants) ? room.participants as any[] : JSON.parse(room.participants as string)
+                        } catch {}
+                        
+                        return (
+                          <div key={room.id} className="flex items-center justify-between p-3 border rounded-lg">
+                            <div>
+                              <h4 className="font-medium">{room.name || `Room ${room.joinCode}`}</h4>
+                              <p className="text-sm text-gray-500">
+                                {participants.length}/{room.maxPlayers} players
+                              </p>
+                            </div>
+                            <Link href={`/rooms/${room.id}`}>
+                              <Button size="sm">Join</Button>
+                            </Link>
                           </div>
-                          <Link href={`/rooms/${room.id}`}>
-                            <Button size="sm">Join</Button>
-                          </Link>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   )}
                 </CardContent>
@@ -175,12 +195,17 @@ export default async function DashboardPage() {
                   ) : (
                     <div className="space-y-3">
                       {userCreatedRooms.map((room: any) => {
+                        let participants: any[] = []
+                        try {
+                          participants = Array.isArray(room.participants) ? room.participants as any[] : JSON.parse(room.participants as string)
+                        } catch {}
+                        
                         return (
                           <div key={room.id} className="flex items-center justify-between p-3 border rounded-lg">
                             <div>
-                              <h4 className="font-medium">{room.name}</h4>
+                              <h4 className="font-medium">{room.name || `Room ${room.joinCode}`}</h4>
                               <p className="text-sm text-gray-500">
-                                {room.participants?.length || 0}/{room.maxPlayers} players • {room.status}
+                                {participants.length}/{room.maxPlayers} players • {room.status}
                               </p>
                               <p className="text-xs text-gray-400">
                                 Created {new Date(room.createdAt).toLocaleDateString()}

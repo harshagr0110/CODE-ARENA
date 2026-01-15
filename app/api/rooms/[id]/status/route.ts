@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
-import { getRoom } from "@/lib/room-manager"
+import { prisma } from "@/lib/prisma"
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -11,16 +11,27 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const room = getRoom(id)
+    const room = await prisma.room.findUnique({ where: { id } })
 
     if (!room) {
       return NextResponse.json({ error: "Room not found" }, { status: 404 })
     }
 
-    const playerCount = room.participants.length + 1 // +1 for room creator
-    const hasActiveGame = room.status === "in_progress"
-    // @ts-expect-error: challengeTitle may not be typed on Room, but is expected at runtime
-    const gameStarted = hasActiveGame && room.challengeTitle !== "Waiting for challenge..."
+    let participants: any[] = []
+    try {
+      participants = Array.isArray(room.participants) ? room.participants as any[] : JSON.parse(room.participants as string)
+    } catch {}
+
+    // Check if there's an active game with a question
+    let gameStarted = false
+    if (room.status === "in_progress") {
+      const activeGame = await prisma.game.findFirst({
+        where: { roomId: id, endedAt: undefined }
+      })
+      gameStarted = !!activeGame?.questionId
+    }
+
+    const playerCount = participants.length
 
     return NextResponse.json({
       status: room.status,
@@ -29,7 +40,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       gameStarted,
     })
   } catch (error) {
-    console.error("Error checking room status:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

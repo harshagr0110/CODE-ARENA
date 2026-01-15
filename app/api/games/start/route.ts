@@ -70,86 +70,43 @@ export async function POST(request: NextRequest) {
     const randomQuestion = questions[Math.floor(Math.random() * questions.length)]
     
     // Current timestamp for game start
-    const startedAt = new Date();
+    const startedAt = new Date()
 
-    // Store game data directly in the room record
-    // First, let's prepare the extra data we need to store
-    const roomData: any = {
-      status: "in_progress",
-      // Since questionId isn't in our schema, we'll store it in a JSON field
-      // along with other game-related data
-      participants: JSON.stringify([
-        ...participants,
-        {
-          _gameData: {
-            questionId: randomQuestion.id,
-            startedAt: startedAt,
-            difficulty: difficulty,
-            mode: mode,
-            tier: tier,
-            durationSeconds: durationSeconds || 300
-          }
-        }
-      ])
-    };
-    
-    // Don't store questionId directly - it's already in the _gameData object in participants
-    
-    // Update the room with the game data
-    const updatedRoom = await prisma.room.update({
-      where: { id: roomId },
-      data: roomData,
-    })
-    
     // Create a game record
     const game = await prisma.game.create({
       data: {
         roomId: roomId,
-        winnerId: '', // Will be populated when game ends
-        winnerName: '',
-        players: JSON.parse(JSON.stringify(participants)), // Ensure valid JSON format
+        questionId: randomQuestion.id,
+        difficulty: difficulty,
+        startedAt: new Date(),
       }
     })
-
-    // Use a room manager or other in-memory storage to track game info
-    // This would typically be done with the socket server or a room manager class
-    try {
-      // For simplicity, we'll make a request to an in-memory room manager API
-      await fetch(`${process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001'}/api/rooms/update`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          roomId,
-          questionId: randomQuestion.id,
-          difficulty,
-          startedAt,
-          durationSeconds: durationSeconds || 300,
-          mode,
-          gameId: game.id
-        })
-      })
-    } catch (e) {
-      console.error("Failed to update room manager:", e)
-      // Not critical if this fails as we can recover from DB
-    }
+    
+    // Update the room with game info
+    const updatedRoom = await prisma.room.update({
+      where: { id: roomId },
+      data: {
+        status: "in_progress",
+        mode: mode || "normal",
+      },
+    })
 
     return NextResponse.json({
       message: "Game started successfully",
       game: {
-        ...updatedRoom,
+        id: game.id,
+        roomId: roomId,
         questionId: randomQuestion.id,
         difficulty,
         startedAt,
         durationSeconds: durationSeconds || 300,
         mode,
         tier,
-        gameId: game.id
       },
+      room: updatedRoom,
       participants,
     })
   } catch (error: unknown) {
-    console.error("Error starting game:", error)
-
     return NextResponse.json(
       {
         error: "Internal server error",

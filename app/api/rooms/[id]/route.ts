@@ -65,22 +65,12 @@ export async function GET(
     
     // Parse participants
     let participants: any[] = []
-    let gameData = null
     
     try {
       participants = Array.isArray(room.participants)
         ? (room.participants as unknown as any[])
         : JSON.parse(room.participants as unknown as string)
-      
-      // Extract game data if it exists in the participants array
-      const gameDataEntry = participants.find(p => p._gameData)
-      if (gameDataEntry) {
-        gameData = gameDataEntry._gameData
-        // Remove the game data entry from participants for cleaner UI
-        participants = participants.filter(p => !p._gameData)
-      }
     } catch (e) {
-      console.error("Error parsing participants:", e)
       participants = []
     }
     
@@ -88,54 +78,36 @@ export async function GET(
     const isParticipant = participants.some((p: any) => p.id === user.id)
     const isHost = room.hostId === user.id
     
-    // Get the most recent game record
-    const recentGame = await prisma.game.findFirst({
-      where: { roomId: id },
-      orderBy: { endedAt: 'desc' }
-    });
+    // Get the active game record for additional data
+    const activeGame = await prisma.game.findFirst({
+      where: {
+        roomId: id,
+        endedAt: undefined
+      }
+    })
     
-    // Determine if we need to fetch question data
-    let questionId = null;
-    let questionData = null;
-    
-    // Simplify question ID finding logic
-    if (gameData && gameData.questionId) {
-      questionId = gameData.questionId;
-    } else if ((room as any).questionId) {
-      questionId = (room as any).questionId;
-    } else if (recentGame && (recentGame as any).questionId) {
-      questionId = (recentGame as any).questionId;
-    }
-    
-    // If we found a question ID, fetch the question data
-    if (questionId) {
+    // Fetch question data if there's an active game
+    let questionData = null
+    if (activeGame?.questionId) {
       try {
-        const question = await prisma.question.findUnique({
-          where: { id: questionId }
-        });
-        if (question) {
-          questionData = question;
-        }
+        questionData = await prisma.question.findUnique({
+          where: { id: activeGame.questionId }
+        })
       } catch (e) {
         // Silent fail
       }
     }
     
-    // Return room data with participant info and game data (simplified)
+    // Return room data with all necessary info
     return NextResponse.json({ 
       ...room, 
       participants,
-      questionId: questionId || gameData?.questionId,
-      difficulty: gameData?.difficulty,
-      mode: gameData?.mode,
-      startedAt: gameData?.startedAt,
-      durationSeconds: gameData?.durationSeconds,
       isParticipant,
       isHost,
-      question: questionData
+      question: questionData,
+      gameId: activeGame?.id,
     })
   } catch (error) {
-    console.error("Error fetching room:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -160,7 +132,6 @@ export async function DELETE(
     await prisma.room.delete({ where: { id } })
     return NextResponse.json({ message: "Room deleted successfully" })
   } catch (error) {
-    console.error("Error deleting room:", error)
     return NextResponse.json({ error: "Failed to delete room" }, { status: 500 })
   }
 }

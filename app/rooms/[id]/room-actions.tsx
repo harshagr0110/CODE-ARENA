@@ -45,7 +45,7 @@ export function RoomActions({ roomId, isHost, inRoom = true, variant = "outline"
       router.refresh()
       router.push("/rooms")
     } catch (error) {
-      console.error("Error deleting room:", error)
+      // Handle error silently
     } finally {
       setIsDeleting(false)
     }
