@@ -17,10 +17,9 @@ interface Submission {
 
 interface ResultsDisplayProps {
   roomId: string
-  gameMode: string
 }
 
-export function ResultsDisplay({ roomId, gameMode }: ResultsDisplayProps) {
+export function ResultsDisplay({ roomId }: ResultsDisplayProps) {
   const [results, setResults] = useState<Submission[]>([])
   const [gameInfo, setGameInfo] = useState<{
     roomName?: string
@@ -33,7 +32,18 @@ export function ResultsDisplay({ roomId, gameMode }: ResultsDisplayProps) {
     const fetchResults = async () => {
       try {
         setLoading(true)
-        const res = await fetch(`/api/games/${roomId}/results`)
+        // First get room to find gameId
+        const roomRes = await fetch(`/api/rooms/${roomId}`)
+        if (!roomRes.ok) throw new Error("Failed to load room")
+        const roomData = await roomRes.json()
+        const gameId = roomData.gameId
+
+        if (!gameId) {
+          throw new Error("No game found for this room")
+        }
+
+        // Now fetch results using gameId
+        const res = await fetch(`/api/games/${gameId}/results`)
         if (!res.ok) throw new Error("Failed to load results")
 
         const data = await res.json()

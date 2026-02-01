@@ -64,7 +64,6 @@ export function RoomActions({ roomId, isHost, inRoom = true, variant = "outline"
       
       router.push("/rooms")
     } catch (error) {
-      console.error("Error leaving room:", error)
     } finally {
       setIsLeaving(false)
     }

@@ -113,11 +113,6 @@ function getErrorMessage(status: any, stderr: string | null, compileOutput: stri
 // Submit code to Judge0
 async function submitCode(code: string, languageId: number, input: string): Promise<string> {
   const apiKey = process.env.RAPIDAPI_KEY
-  console.log('🔑 API Key check:', {
-    hasKey: !!apiKey,
-    keyLength: apiKey?.length || 0,
-    keyStart: apiKey?.substring(0, 10) || 'none'
-  })
   
   if (!apiKey) {
     throw new Error('RapidAPI key is not configured. Please add RAPIDAPI_KEY to your environment variables.')
@@ -131,14 +126,7 @@ async function submitCode(code: string, languageId: number, input: string): Prom
     memory_limit: 512000,
   }
 
-  console.log('📤 Submitting to Judge0:', {
-    languageId,
-    codeLength: code.length,
-    inputLength: input.length,
-    hasApiKey: !!apiKey
-  })
 
-  console.log('📝 Judge0 submission payload:', submission);
   
   const response = await fetch(`${JUDGE0_API_URL}/submissions`, {
     method: 'POST',
@@ -150,11 +138,6 @@ async function submitCode(code: string, languageId: number, input: string): Prom
     body: JSON.stringify(submission),
   })
 
-  console.log('📥 Judge0 response:', {
-    status: response.status,
-    statusText: response.statusText,
-    ok: response.ok
-  })
 
   if (response.status === 403) {
     throw new Error('Authentication failed. Please check your RapidAPI key. Make sure you have subscribed to Judge0 CE API.')
@@ -166,13 +149,11 @@ async function submitCode(code: string, languageId: number, input: string): Prom
   
   if (response.status === 422) {
     const errorBody = await response.text();
-    console.error('Judge0 validation error:', errorBody);
     throw new Error(`Judge0 API validation error (422): ${errorBody.substring(0, 200)}...`);
   }
 
   if (!response.ok) {
     const errorBody = await response.text();
-    console.error('Judge0 error body:', errorBody);
     throw new Error(`Judge0 API error: ${response.status} - ${response.statusText}`)
   }
 
@@ -214,13 +195,6 @@ async function waitForResults(token: string, maxAttempts: number = 30): Promise<
   for (let i = 0; i < maxAttempts; i++) {
     const result = await getResults(token)
     
-    console.log(`🔄 Polling attempt ${i + 1}:`, {
-      statusId: result.status.id,
-      statusDescription: result.status.description,
-      stdout: result.stdout?.substring(0, 100),
-      stderr: result.stderr?.substring(0, 100),
-      compileOutput: result.compile_output?.substring(0, 100)
-    })
     
     // Status 1 = In Queue, Status 2 = Processing
     // Status 3 = Accepted, Status 4+ = Various errors
@@ -366,7 +340,6 @@ export async function getPistonLanguages() {
     if (!response.ok) return []
     return await response.json()
   } catch (error) {
-    console.error('Error fetching Judge0 languages:', error)
     return []
   }
 }

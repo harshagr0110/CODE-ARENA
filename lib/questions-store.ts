@@ -5,12 +5,10 @@ interface Question {
   title: string;
   description: string;
   difficulty: string;
-  recommendedTimeComplexity?: string;
+  topics: string[];
   testCases: Array<{ input: string; expectedOutput: string; explanation?: string }>;
-  questionType: string;
   createdBy: string;
-  createdAt: string;
-  creator: { username: string };
+  creator?: { username: string };
 }
 
 
@@ -32,7 +30,6 @@ class QuestionsStore {
     let filtered = this.questions;
     if (where) {
       if (where.difficulty) filtered = filtered.filter(q => q.difficulty === where.difficulty);
-      if (where.questionType) filtered = filtered.filter(q => q.questionType === where.questionType);
     }
     if (limit) filtered = filtered.slice(0, limit);
     return filtered;

@@ -7,8 +7,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Badge } from "@/components/ui/badge"
 import { MainLayout } from "@/components/main-layout"
-import { Plus, Trash2, AlertCircle } from "lucide-react"
+import { Plus, Trash2, AlertCircle, X } from "lucide-react"
+import { QUESTION_TOPICS } from "@/lib/constants"
 
 interface TestCase {
   input: string
@@ -23,9 +25,8 @@ export default function UploadQuestionPage() {
     title: "",
     description: "",
     difficulty: "medium",
-    recommendedTimeComplexity: "",
-    questionType: "normal",
   })
+  const [selectedTopics, setSelectedTopics] = useState<string[]>([])
   const [testCases, setTestCases] = useState<TestCase[]>([
     { input: "", expectedOutput: "", explanation: "" }
   ])
@@ -52,11 +53,15 @@ export default function UploadQuestionPage() {
     const newErrors: string[] = []
 
     if (!formData.title.trim()) {
-      newErrors.push("Question title is required")
+      newErrors.push("Problem title is required")
     }
 
     if (!formData.description.trim()) {
-      newErrors.push("Question description is required")
+      newErrors.push("Problem description is required")
+    }
+
+    if (selectedTopics.length === 0) {
+      newErrors.push("Please select at least one topic")
     }
 
     // Validate test cases
@@ -79,6 +84,18 @@ export default function UploadQuestionPage() {
 
     setErrors(newErrors)
     return newErrors.length === 0
+  }
+
+  const toggleTopic = (topic: string) => {
+    setSelectedTopics(prev => 
+      prev.includes(topic) 
+        ? prev.filter(t => t !== topic)
+        : [...prev, topic]
+    )
+  }
+
+  const removeTopic = (topic: string) => {
+    setSelectedTopics(prev => prev.filter(t => t !== topic))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -107,19 +124,20 @@ export default function UploadQuestionPage() {
         },
         body: JSON.stringify({
           ...formData,
+          topics: selectedTopics,
           testCases: validTestCases,
         }),
       })
 
       if (!response.ok) {
         const error = await response.json()
-        throw new Error(error.error || "Failed to create question")
+        throw new Error(error.error || "Failed to create problem")
       }
 
-      alert("Question created successfully!")
+      alert("Problem created successfully!")
       router.push("/questions")
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to create question")
+      alert(error instanceof Error ? error.message : "Failed to create problem")
     } finally {
       setLoading(false)
     }
@@ -130,15 +148,15 @@ export default function UploadQuestionPage() {
       <div className="bg-gray-50 min-h-screen">
         <div className="container mx-auto px-4 py-8">
           <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Upload New Question</h1>
-            <p className="text-gray-600">Create a new coding challenge for the platform</p>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Add New Problem</h1>
+            <p className="text-gray-600">Create a new coding problem for the platform</p>
           </div>
 
           <div className="max-w-4xl mx-auto">
             <Card>
               <CardHeader>
-                <CardTitle>Question Details</CardTitle>
-                <CardDescription>Fill in the details for your coding question</CardDescription>
+                <CardTitle>Problem Details</CardTitle>
+                <CardDescription>Fill in the details for your coding problem</CardDescription>
               </CardHeader>
               <CardContent>
                 {errors.length > 0 && (
@@ -158,7 +176,7 @@ export default function UploadQuestionPage() {
                 <form onSubmit={handleSubmit} className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <Label htmlFor="title">Question Title *</Label>
+                      <Label htmlFor="title">Problem Title *</Label>
                       <Input
                         id="title"
                         value={formData.title}
@@ -184,30 +202,47 @@ export default function UploadQuestionPage() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <Label htmlFor="timeComplexity">Recommended Time Complexity</Label>
-                      <Input
-                        id="timeComplexity"
-                        value={formData.recommendedTimeComplexity}
-                        onChange={(e) => setFormData({ ...formData, recommendedTimeComplexity: e.target.value })}
-                        placeholder="e.g., O(n), O(n log n)"
-                      />
+                  {/* Topics Selection */}
+                  <div className="space-y-3">
+                    <Label>Topics / Concepts * (Select at least one)</Label>
+                    <div className="border rounded-lg p-4 max-h-64 overflow-y-auto">
+                      <div className="flex flex-wrap gap-2">
+                        {QUESTION_TOPICS.map((topic) => (
+                          <button
+                            key={topic}
+                            type="button"
+                            onClick={() => toggleTopic(topic)}
+                            className={`px-3 py-1 text-sm rounded-full border transition-colors ${
+                              selectedTopics.includes(topic)
+                                ? 'bg-blue-500 text-white border-blue-500'
+                                : 'bg-white text-gray-700 border-gray-300 hover:border-blue-500'
+                            }`}
+                          >
+                            {topic}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="questionType">Question Type *</Label>
-                      <select
-                        id="questionType"
-                        value={formData.questionType}
-                        onChange={(e) => setFormData({ ...formData, questionType: e.target.value })}
-                        className="w-full border rounded-md px-3 py-2"
-                        required
-                      >
-                        <option value="normal">Normal</option>
-                        <option value="puzzle">Puzzle</option>
-                      </select>
-                    </div>
+                    {selectedTopics.length > 0 && (
+                      <div className="flex flex-wrap gap-2 pt-2">
+                        <span className="text-sm text-gray-600">Selected:</span>
+                        {selectedTopics.map((topic) => (
+                          <Badge key={topic} className="bg-blue-500 text-white">
+                            {topic}
+                            <button
+                              type="button"
+                              onClick={() => removeTopic(topic)}
+                              className="ml-1 hover:bg-blue-600 rounded-full"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-sm text-gray-500">
+                      Select all relevant topics that this problem covers (e.g., Arrays, Dynamic Programming, Trees)
+                    </p>
                   </div>
 
                   <div className="space-y-2">

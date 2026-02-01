@@ -19,30 +19,30 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (!room) {
       return NextResponse.json({ error: "Room not found" }, { status: 404 })
     }
+    // Standardized participant parsing
     let participants: any[] = []
     try {
       participants = Array.isArray(room.participants)
-        ? (room.participants as unknown as any[])
+        ? (room.participants as any[])
         : JSON.parse(room.participants as unknown as string)
-    } catch {
+    } catch (e) {
       participants = []
     }
-    const maxPlayers = (room as any).maxPlayers ?? 10
+    const maxPlayers = typeof room.maxPlayers === "number" ? room.maxPlayers : 10
     if (participants.length >= maxPlayers) {
       return NextResponse.json({ error: "Room is full" }, { status: 400 })
     }
-    if (room.status !== "waiting") {
-      return NextResponse.json({ error: "Room is not accepting players" }, { status: 400 })
+    if (!room.isActive) {
+      return NextResponse.json({ error: "Room is not active" }, { status: 400 })
     }
     const alreadyInRoom = participants.some((p: any) => p.id === user.id)
     if (alreadyInRoom) {
       return NextResponse.json({ message: "Already in room" })
     }
     participants.push({ id: user.id, username: user.username })
-    await prisma.room.update({ where: { id }, data: { participants: JSON.stringify(participants) } })
+    await prisma.room.update({ where: { id }, data: { participants } })
     return NextResponse.json({ message: "Joined room successfully" })
   } catch (error) {
-    console.error("Error joining room:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -63,12 +63,11 @@ export async function GET(
       return NextResponse.json({ error: "Room not found" }, { status: 404 })
     }
     
-    // Parse participants
+    // Standardized participant parsing
     let participants: any[] = []
-    
     try {
       participants = Array.isArray(room.participants)
-        ? (room.participants as unknown as any[])
+        ? (room.participants as any[])
         : JSON.parse(room.participants as unknown as string)
     } catch (e) {
       participants = []
@@ -82,8 +81,9 @@ export async function GET(
     const activeGame = await prisma.game.findFirst({
       where: {
         roomId: id,
-        endedAt: undefined
-      }
+        endedAt: null
+      },
+      orderBy: { startedAt: 'desc' }
     })
     
     // Fetch question data if there's an active game
@@ -105,7 +105,11 @@ export async function GET(
       isParticipant,
       isHost,
       question: questionData,
+      questionId: activeGame?.questionId ?? (room as any).questionId,
       gameId: activeGame?.id,
+      startedAt: activeGame?.startedAt ?? (room as any).startedAt ?? null,
+      durationSeconds: activeGame?.durationSeconds ?? 300,
+      difficulty: activeGame?.difficulty ?? (room as any).difficulty ?? "medium",
     })
   } catch (error) {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

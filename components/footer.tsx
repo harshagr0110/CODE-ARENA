@@ -13,7 +13,7 @@ export function Footer() {
               <span className="text-xl font-bold">Code Arena</span>
             </div>
             <p className="text-gray-300 mb-4 max-w-md">
-              Real-time multiplayer coding competitions. Compete, solve challenges, and climb the leaderboard.
+              Real-time multiplayer coding competitions. Compete and solve challenges with others.
             </p>
             <div className="flex space-x-4">
               <a
@@ -56,13 +56,8 @@ export function Footer() {
                 </Link>
               </li>
               <li>
-                <Link href="/practice" className="text-gray-300 hover:text-white transition-colors">
-                  Practice
-                </Link>
-              </li>
-              <li>
-                <Link href="/leaderboard" className="text-gray-300 hover:text-white transition-colors">
-                  Leaderboard
+                <Link href="/questions" className="text-gray-300 hover:text-white transition-colors">
+                  Problems
                 </Link>
               </li>
             </ul>
@@ -72,11 +67,7 @@ export function Footer() {
           <div>
             <h3 className="text-lg font-semibold mb-4">Resources</h3>
             <ul className="space-y-2">
-              <li>
-                <Link href="/questions" className="text-gray-300 hover:text-white transition-colors">
-                  Questions
-                </Link>
-              </li>
+
               <li>
                 <a href="https://github.com" target="_blank" rel="noopener noreferrer" className="text-gray-300 hover:text-white transition-colors">
                   GitHub

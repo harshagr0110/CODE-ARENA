@@ -27,25 +27,20 @@ export function DeleteRoomButton({ roomId, roomName, isCreator, currentPlayers }
   const [isDeleting, setIsDeleting] = useState(false)
   const router = useRouter()
 
-  console.log("DeleteRoomButton render:", { roomId, roomName, isCreator, currentPlayers })
 
   if (!isCreator || currentPlayers > 0) {
-    console.log("Not creator or players in room, not rendering delete button")
     return null
   }
 
-  console.log("Rendering delete button for creator")
 
   const handleDelete = async () => {
     setIsDeleting(true)
     try {
-      console.log("Attempting to delete room:", roomId)
       
       const response = await fetch(`/api/rooms/${roomId}`, {
         method: "DELETE",
       })
 
-      console.log("Delete response status:", response.status)
 
       if (!response.ok) {
         const error = await response.json()
@@ -56,7 +51,6 @@ export function DeleteRoomButton({ roomId, roomName, isCreator, currentPlayers }
 
       router.push("/rooms")
     } catch (error) {
-      console.error("Error deleting room:", error)
       window.alert("Error: " + (error instanceof Error ? error.message : "Failed to delete room"))
     } finally {
       setIsDeleting(false)
@@ -71,7 +65,6 @@ export function DeleteRoomButton({ roomId, roomName, isCreator, currentPlayers }
           size="sm" 
           className="cursor-pointer"
           onClick={(e) => {
-            console.log("Delete button clicked")
             e.stopPropagation()
           }}
           title="Delete this room"

@@ -25,11 +25,11 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     if (room.hostId !== user.id) {
       return NextResponse.json({ error: "Only the host can start a rematch" }, { status: 403 })
     }
-    // Reset the room for a new game (status: waiting, clear challenge, winner, etc.)
+    // Reset the room for a new game (isActive: true, clear challenge, winner, etc.)
     await prisma.room.update({
       where: { id: roomId },
       data: {
-        status: "waiting",
+        isActive: true,
       },
     })
     // Notify all players via socket

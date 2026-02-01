@@ -1,124 +1,128 @@
-# Coding Platform
+# Code Arena
 
-A competitive coding platform with real-time multiplayer games and practice problems.
+A competitive coding platform for real-time multiplayer games and solo practice. Built with Next.js, PostgreSQL, Prisma, Clerk, and Socket.IO, and powered by Judge0 for code execution.
 
-## Features
+## What this project demonstrates
 
-- 🎮 **Real-time multiplayer coding games**
-- 📝 **Practice problems with multiple languages**
-- 🏆 **Leaderboards and scoring**
-- 👥 **Room-based gameplay**
-- 📊 **Code execution with Judge0 API**
+- Real-time multiplayer coding rooms and games
+- Practice mode with submissions and evaluations
+- Leaderboards, scoring, and game results
+- Room lifecycle management (create, join, start, end)
+- External code execution service integration
+- Authenticated experiences and protected routes
 
-## Setup
+## High-level architecture (interview-friendly)
 
-### 1. Environment Variables
-
-Create a `.env.local` file:
-
-```env
-# Judge0 API Configuration (Required)
-RAPIDAPI_KEY=your_rapidapi_key_here
-
-# Database Configuration
-DATABASE_URL="postgresql://username:password@localhost:5432/database_name"
-
-# Clerk Configuration
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=your_clerk_publishable_key
-CLERK_SECRET_KEY=your_clerk_secret_key
-```
-
-### 2. Get RapidAPI Key (IMPORTANT!)
-
-**Step 1: Sign up for RapidAPI**
-1. Go to [RapidAPI](https://rapidapi.com)
-2. Create an account or sign in
-
-**Step 2: Subscribe to Judge0 CE**
-1. Go to [Judge0 CE API](https://rapidapi.com/judge0-official/api/judge0-ce)
-2. Click "Subscribe to Test"
-3. Choose the free plan (100 requests/month)
-4. Complete the subscription
-
-**Step 3: Get your API Key**
-1. In your RapidAPI dashboard, go to "My Apps"
-2. Find your Judge0 CE subscription
-3. Copy the API key (starts with something like `7cc9136ademsh...`)
-4. Add it to your `.env.local` file
-
-**Step 4: Verify Setup**
-- Make sure the API key is in your `.env.local` file
-- Restart your development server
-- Try submitting code again
-
-### 3. Install Dependencies
-
-```bash
-npm install
-```
-
-### 4. Database Setup
-
-```bash
-npx prisma generate
-npx prisma db push
-```
-
-### 5. Run Development Server
-
-```bash
-npm run dev
-```
-
-## Troubleshooting
-
-### "Judge0 API error: 403"
-This means your RapidAPI key is not working. To fix:
-
-1. **Check your API key**: Make sure it's copied correctly from RapidAPI
-2. **Verify subscription**: Ensure you're subscribed to Judge0 CE API
-3. **Check environment**: Make sure `RAPIDAPI_KEY` is in your `.env.local` file
-4. **Restart server**: Stop and restart your development server
-
-### "Authentication failed"
-- Make sure you've subscribed to the Judge0 CE API on RapidAPI
-- Check that your API key is valid and active
-- Verify the key is properly set in your environment variables
-
-## Supported Languages
-
-- **JavaScript** (Node.js 18.15.0)
-- **Python** (3.8.1)
-- **C++** (GCC 9.2.0)
-- **Java** (OpenJDK 13.0.1)
-- **C** (GCC 9.2.0)
-
-## Architecture
-
-- **Frontend**: Next.js 14 with TypeScript
-- **Backend**: Next.js API routes
-- **Database**: PostgreSQL with Prisma
-- **Code Execution**: Judge0 API
+- **Frontend**: Next.js 14 (App Router) with TypeScript
+- **Backend**: Next.js API routes for game flow, submissions, and rooms
+- **Database**: PostgreSQL with Prisma ORM
 - **Authentication**: Clerk
-- **Real-time**: Socket.IO
+- **Realtime**: Socket.IO server + client hooks
+- **Code execution**: Judge0 CE via RapidAPI
 
-## Code Execution
+## Key flows (logical overview)
 
-The platform uses **Judge0 CE** for reliable code execution:
+1. **User authentication**
+   - Users authenticate via Clerk and access protected pages and APIs.
 
-- ✅ **No SIGSEGV issues** (unlike Piston)
-- ✅ **Stable execution environment**
-- ✅ **Multiple language support**
-- ✅ **Proper error handling**
-- ✅ **Timeout and memory limits**
+2. **Room creation and joining**
+   - A user creates a room, receives a join code, and others join by code.
+   - Room state and participants are tracked in the database.
 
-## Contributing
+3. **Game start and live updates**
+   - The host starts the game, the question is assigned, and a timer begins.
+   - Socket.IO broadcasts events such as participant changes and status updates.
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
+4. **Code submission and evaluation**
+   - Submissions are sent to Judge0 for execution.
+   - Results are stored and used to compute scores and rankings.
 
-## License
+5. **Game end and results**
+   - Results are aggregated and displayed in a leaderboard view.
 
-MIT
+## Interview question prompts (from this project)
+
+### System design (high-level)
+
+- How would you design a real-time coding game platform with rooms and leaderboards?
+- How do you separate responsibilities between the web app, database, and realtime server?
+- What trade-offs come with using Next.js API routes as the backend layer?
+
+### Backend and data modeling
+
+- How do you model rooms, participants, questions, submissions, and results?
+- What indexes or constraints are important for room codes and user participation?
+- How do you ensure a user cannot join the same room twice?
+- How do you handle game status transitions (created → active → ended)?
+
+### Realtime communication
+
+- Why use Socket.IO for live updates instead of polling?
+- What events would you emit for room lifecycle and scoreboard updates?
+- How do you handle disconnects and stale room state?
+
+### External service integration (Judge0)
+
+- Why use a hosted code execution API instead of running containers locally?
+- How do you handle timeouts, memory limits, and error states from Judge0?
+- How do you map Judge0 responses to user-visible verdicts?
+
+### Authentication and authorization
+
+- How does Clerk integrate with Next.js for protected routes and API access?
+- Where do you enforce access control (pages vs APIs)?
+
+### Performance and scalability
+
+- Which parts of the system are most sensitive to latency?
+- How would you scale realtime communication as usage grows?
+- What caching or rate-limiting would you add for code submissions?
+
+### Reliability and observability
+
+- What logs and metrics are most useful for tracking game stability?
+- How would you debug issues in code execution or realtime events?
+
+### Security and abuse prevention
+
+- How do you prevent spam submissions or room abuse?
+- What data validation is necessary for submissions and room actions?
+- How do you protect API routes from unauthorized access?
+
+## Supported languages (Judge0 CE)
+
+- JavaScript (Node.js 18.15.0)
+- Python (3.8.1)
+- C++ (GCC 9.2.0)
+- Java (OpenJDK 13.0.1)
+- C (GCC 9.2.0)
+
+## Environment variables (summary)
+
+- `RAPIDAPI_KEY` — Judge0 CE API key
+- `DATABASE_URL` — PostgreSQL connection string
+- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` — Clerk publishable key
+- `CLERK_SECRET_KEY` — Clerk secret key
+
+## Local setup (short)
+
+1. Install dependencies
+   - `npm install`
+2. Generate Prisma client and apply schema
+   - `npx prisma generate`
+   - `npx prisma db push`
+3. Run the dev server
+   - `npm run dev`
+
+## Project structure (selected)
+
+- app/api — game, room, submission, and question endpoints
+- app/rooms — room UI and live game screens
+- app/practice — practice mode UI
+- lib — Prisma, auth, Judge0, and utilities
+- prisma — schema and migrations
+
+## Notes for interviews
+
+- Keep answers high-level and focus on **flows**, **data**, and **system boundaries**.
+- Frontend detail is minimal; backend reasoning and real-time flow are stronger talking points.

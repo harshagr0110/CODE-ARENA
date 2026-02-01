@@ -11,14 +11,18 @@ interface Props {
 export async function GET(request: NextRequest, { params }: Props) {
   try {
     const { id } = await params
-    const user = await getCurrentUser()
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
 
+    // Public access for viewing a question
     const question = await prisma.question.findUnique({
       where: { id },
-      include: { creator: { select: { username: true } } },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        difficulty: true,
+        topics: true,
+        testCases: true,
+      }
     })
     if (!question) {
       return NextResponse.json({ error: "Question not found" }, { status: 404 })
@@ -53,7 +57,6 @@ export async function GET(request: NextRequest, { params }: Props) {
     
     return NextResponse.json(cleanedQuestion)
   } catch (error) {
-    console.error("Error fetching question:", error)
     return NextResponse.json({ error: "Failed to fetch question" }, { status: 500 })
   }
 }
@@ -66,7 +69,7 @@ export async function PUT(request: NextRequest, { params }: Props) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { title, description, difficulty, recommendedTimeComplexity, testCases, questionType } = await request.json()
+    const { title, description, difficulty, topics, testCases } = await request.json()
 
     const existingQuestion = await prisma.question.findUnique({ where: { id } })
     if (!existingQuestion) {
@@ -91,14 +94,14 @@ export async function PUT(request: NextRequest, { params }: Props) {
         title,
         description,
         difficulty,
-        recommendedTimeComplexity,
+        topics: Array.isArray(topics)
+          ? topics.map((t: any) => (typeof t === 'string' ? t : String(t))).slice(0, 10)
+          : existingQuestion.topics,
         testCases: cleanedTestCases,
-        questionType,
       },
     })
     return NextResponse.json(updated)
   } catch (error) {
-    console.error("Error updating question:", error)
     return NextResponse.json({ error: "Failed to update question" }, { status: 500 })
   }
 }
@@ -121,7 +124,6 @@ export async function DELETE(request: NextRequest, { params }: Props) {
     await prisma.question.delete({ where: { id } })
     return NextResponse.json({ message: "Question deleted successfully" })
   } catch (error) {
-    console.error("Error deleting question:", error)
     return NextResponse.json({ error: "Failed to delete question" }, { status: 500 })
   }
 }

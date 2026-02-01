@@ -41,79 +41,68 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No active game found" }, { status: 400 })
     }
 
+    // Idempotency check - if game already ended, return existing result
+    if (game.endedAt) {
+      return NextResponse.json({
+        message: "Game already ended",
+        winnerId: game.winnerId,
+        alreadyEnded: true,
+      })
+    }
+
     // Determine winner - first person to submit correct solution
     let winner = null
-    let winnerScore = 0
 
     for (const submission of game.submissions) {
       if (submission.isCorrect) {
         winner = submission.user
-        winnerScore = submission.score
         break
       }
     }
 
-    // If no correct solution, winner is person with highest score
+    // If no correct solution, winner is first to submit
     if (!winner && game.submissions.length > 0) {
-      const best = game.submissions.reduce((prev, curr) =>
-        curr.score > prev.score ? curr : prev
-      )
-      winner = best.user
-      winnerScore = best.score
+      winner = game.submissions[0].user
     }
 
-    // Update game with winner
-    await prisma.game.update({
-      where: { id: game.id },
-      data: {
-        winnerId: winner?.id || null,
-        endedAt: new Date(),
-      },
-    })
+    // Parse participants from room
+    let participants: any[] = []
+    try {
+      participants = Array.isArray(room.participants)
+        ? room.participants as any[]
+        : JSON.parse(room.participants as unknown as string)
+    } catch (e) {
+      participants = []
+    }
 
-    // Update room status
-    await prisma.room.update({
-      where: { id: roomId },
-      data: {
-        status: "finished",
-        endedAt: new Date(),
-      },
-    })
+    // Get all participant IDs from the room
+    const allParticipantIds = participants.map((p: any) => p.id).filter(Boolean)
 
-    // Update user stats
-    if (winner) {
-      // Winner gets points based on score
-      await prisma.user.update({
-        where: { id: winner.id },
+    // Use transaction to ensure atomicity
+    const result = await prisma.$transaction(async (tx) => {
+      // Update game with winner
+      await tx.game.update({
+        where: { id: game.id },
         data: {
-          totalScore: { increment: winnerScore },
-          gamesPlayed: { increment: 1 },
-          gamesWon: { increment: 1 },
+          winnerId: winner?.id || null,
+          endedAt: new Date(),
         },
-      }).catch(() => {/* Silent fail */})
-    }
+      })
 
-    // Update all participants
-    const allParticipants = game.submissions.map(s => s.userId)
-    const uniqueParticipants = [...new Set(allParticipants)]
+      // Game ends but room stays active until host clicks "Finish Game"
+      // No need to update room status here
 
-    for (const participantId of uniqueParticipants) {
-      if (participantId !== winner?.id) {
-        await prisma.user.update({
-          where: { id: participantId },
-          data: { gamesPlayed: { increment: 1 } },
-        }).catch(() => {/* Silent fail */})
+      return {
+        winnerId: winner?.id,
+        winnerName: winner?.username,
       }
-    }
+    })
 
     return NextResponse.json({
       message: "Game ended successfully",
-      winnerId: winner?.id,
-      winnerName: winner?.username,
-      winnerScore,
+      ...result,
     })
   } catch (error) {
-    console.error("Error ending game:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

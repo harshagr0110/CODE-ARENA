@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -15,7 +15,7 @@ interface Question {
   title: string
   description: string
   difficulty: string
-  recommendedTimeComplexity?: string
+  topics: string[]
   testCases: Array<{
     input: string
     expectedOutput: string
@@ -63,11 +63,10 @@ export default function PracticeQuestionPage({ params }: Props) {
           const data = await response.json()
           setQuestion(data)
         } else {
-          router.push('/practice')
+          router.push('/questions')
         }
       } catch (error) {
-        console.error("Error fetching question:", error)
-        router.push('/practice')
+        router.push('/questions')
       } finally {
         setLoading(false)
       }
@@ -75,6 +74,20 @@ export default function PracticeQuestionPage({ params }: Props) {
 
     fetchQuestion()
   }, [params, router])
+
+  const normalizedTestCases = useMemo(() => {
+    if (!question) return []
+    const raw = Array.isArray(question.testCases)
+      ? question.testCases
+      : typeof question.testCases === 'string'
+        ? (() => { try { return JSON.parse(question.testCases) } catch { return [] } })()
+        : []
+    return raw.map((tc: any) => ({
+      input: tc.input || '',
+      expectedOutput: tc.expectedOutput || '',
+      explanation: tc.explanation || ''
+    }))
+  }, [question])
 
   const handleSubmit = async () => {
     if (!code.trim() || !question) {
@@ -84,13 +97,6 @@ export default function PracticeQuestionPage({ params }: Props) {
 
     setSubmitting(true)
     try {
-      // Ensure test cases are properly formatted
-      const testCases = Array.isArray(question.testCases) 
-        ? question.testCases 
-        : typeof question.testCases === 'string' 
-          ? JSON.parse(question.testCases) 
-          : []
-
       const response = await fetch("/api/practice/submit", {
         method: "POST",
         headers: {
@@ -99,11 +105,7 @@ export default function PracticeQuestionPage({ params }: Props) {
         body: JSON.stringify({
           code: code.trim(),
           language,
-          testCases: testCases.map((tc: any) => ({
-            input: tc.input || '',
-            expectedOutput: tc.expectedOutput || '',
-            explanation: tc.explanation
-          }))
+          testCases: normalizedTestCases
         }),
       })
 
@@ -171,9 +173,9 @@ export default function PracticeQuestionPage({ params }: Props) {
         <div className="container mx-auto px-4 py-8">
           <Card>
             <CardContent className="text-center py-12">
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Question not found</h3>
-              <Link href="/practice">
-                <Button>Back to Practice</Button>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Problem not found</h3>
+              <Link href="/questions">
+                <Button>Back to Problems</Button>
               </Link>
             </CardContent>
           </Card>
@@ -187,10 +189,10 @@ export default function PracticeQuestionPage({ params }: Props) {
       <div className="bg-gray-50 min-h-screen">
         <div className="container mx-auto px-4 py-8">
           <div className="mb-6">
-            <Link href="/practice">
+            <Link href="/questions">
               <Button variant="ghost" size="sm">
                 <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Practice
+                Back to Problems
               </Button>
             </Link>
           </div>
@@ -206,10 +208,13 @@ export default function PracticeQuestionPage({ params }: Props) {
                       {question.difficulty}
                     </Badge>
                   </div>
-                  {question.recommendedTimeComplexity && (
-                    <div className="flex items-center text-sm text-gray-600">
-                      <Clock className="h-4 w-4 mr-2" />
-                      <span>Time Complexity: {question.recommendedTimeComplexity}</span>
+                  {question.topics && question.topics.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {question.topics.map((topic) => (
+                        <Badge key={topic} variant="outline" className="text-xs">
+                          {topic}
+                        </Badge>
+                      ))}
                     </div>
                   )}
                 </CardHeader>
@@ -227,7 +232,7 @@ export default function PracticeQuestionPage({ params }: Props) {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {question.testCases.slice(0, 3).map((testCase, index) => (
+                    {normalizedTestCases.slice(0, 2).map((testCase: any, index: number) => (
                       <div key={index} className="bg-gray-50 p-4 rounded-lg">
                         <h4 className="font-medium mb-2">Example {index + 1}:</h4>
                         <div className="space-y-2 text-sm">
@@ -250,6 +255,11 @@ export default function PracticeQuestionPage({ params }: Props) {
                         </div>
                       </div>
                     ))}
+                    {normalizedTestCases.length > 2 && (
+                      <p className="text-sm text-gray-600">
+                        {normalizedTestCases.length - 2} additional test case{normalizedTestCases.length - 2 === 1 ? '' : 's'} hidden; all cases run after you submit.
+                      </p>
+                    )}
                   </div>
                 </CardContent>
               </Card>

@@ -4,6 +4,7 @@ import React, { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { useSocket } from "@/hooks/use-socket"
 
 interface StartGameButtonProps {
   roomId: string
@@ -22,7 +23,10 @@ const StartGameButton: React.FC<StartGameButtonProps> = ({
 }) => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [difficulty, setDifficulty] = useState("medium")
+  const [durationSeconds, setDurationSeconds] = useState(300)
   const router = useRouter()
+  const { socket, isConnected } = useSocket()
 
   const handleStartGame = async () => {
     if (!isHost) {
@@ -44,9 +48,8 @@ const StartGameButton: React.FC<StartGameButtonProps> = ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           roomId,
-          difficulty: "medium",
-          durationSeconds: 300,
-          mode: "normal",
+          difficulty,
+          durationSeconds,
         }),
       })
 
@@ -56,8 +59,17 @@ const StartGameButton: React.FC<StartGameButtonProps> = ({
         throw new Error(data.error || "Failed to start game")
       }
 
-      // Refresh the page to show the updated game state
-      router.refresh()
+      // Broadcast to room - socket will handle refreshing all clients
+      // Use server's startedAt time from the API response, not client time
+      if (socket && isConnected) {
+        const serverStartTime = data?.game?.startedAt ? new Date(data.game.startedAt).getTime() : Date.now()
+        socket.emit("game-started", {
+          roomId,
+          questionId: data?.game?.questionId,
+          durationSeconds: data?.game?.durationSeconds || durationSeconds || 300,
+          startTime: serverStartTime,
+        })
+      }
     } catch (err: any) {
       setError(err.message || "Failed to start game")
     } finally {
@@ -83,9 +95,36 @@ const StartGameButton: React.FC<StartGameButtonProps> = ({
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-          <div className="text-sm text-gray-600">
+          <div className="text-sm text-gray-600 space-y-1">
             <p>Room: <strong>{roomName}</strong></p>
             <p>Players: <strong>{playerCount}</strong></p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+            <div className="space-y-1">
+              <label className="font-medium">Difficulty</label>
+              <select
+                value={difficulty}
+                onChange={(e) => setDifficulty(e.target.value)}
+                className="w-full border rounded-md px-3 py-2"
+              >
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="font-medium">Duration</label>
+              <select
+                value={durationSeconds}
+                onChange={(e) => setDurationSeconds(Number(e.target.value))}
+                className="w-full border rounded-md px-3 py-2"
+              >
+                <option value={180}>3 minutes</option>
+                <option value={300}>5 minutes</option>
+                <option value={600}>10 minutes</option>
+              </select>
+            </div>
           </div>
           
           {error && (

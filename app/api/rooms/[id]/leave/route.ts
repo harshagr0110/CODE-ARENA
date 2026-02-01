@@ -10,29 +10,29 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     const { id: roomId } = await context.params;
     const room = await prisma.room.findUnique({ where: { id: roomId } })
     if (!room) return NextResponse.json({ error: "Room not found" }, { status: 404 })
-    let participants: any[] = [];
-    if (Array.isArray(room.participants)) {
-      participants = room.participants as any[];
-    } else if (typeof room.participants === 'string') {
-      try {
-        participants = JSON.parse(room.participants);
-      } catch {
-        participants = [];
-      }
+    
+    // Standardized participant parsing
+    let participants: any[] = []
+    try {
+      participants = Array.isArray(room.participants)
+        ? (room.participants as any[])
+        : JSON.parse(room.participants as unknown as string)
+    } catch (e) {
+      participants = []
     }
+
     const isHost = room.hostId === user.id
     if (isHost) {
-      // If host leaves, just delete the room (don't create a game)
+      // If host leaves, delete the room
       // Any active games will be cleaned up via cascade delete
       await prisma.room.delete({ where: { id: roomId } })
       return NextResponse.json({ message: "Host left, room deleted" })
     } else {
       participants = participants.filter((p: any) => p.id !== user.id)
-      await prisma.room.update({ where: { id: roomId }, data: { participants: JSON.stringify(participants) } })
+      await prisma.room.update({ where: { id: roomId }, data: { participants } })
       return NextResponse.json({ message: "Left room successfully" })
     }
   } catch (error) {
-    console.error("Error leaving room:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

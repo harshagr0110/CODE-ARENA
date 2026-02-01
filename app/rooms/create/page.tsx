@@ -16,6 +16,7 @@ export default function CreateRoomPage() {
   const [formData, setFormData] = useState({
     name: "",
     maxPlayers: "4",
+    privacy: "public",
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -52,7 +53,7 @@ export default function CreateRoomPage() {
         <div className="container mx-auto px-4 py-8">
           <div className="mb-8">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Create New Room</h1>
-            <p className="text-gray-600">Set up your coding competition room</p>
+            <p className="text-gray-600">Set up your coding competition room. The question will be selected randomly based on difficulty when you start the game.</p>
           </div>
 
           <div className="max-w-2xl mx-auto">
@@ -76,6 +77,22 @@ export default function CreateRoomPage() {
                   </div>
 
                   <div className="space-y-2">
+                    <Label htmlFor="privacy">Room Privacy</Label>
+                    <select
+                      id="privacy"
+                      value={formData.privacy}
+                      onChange={(e) => setFormData({ ...formData, privacy: e.target.value })}
+                      className="w-full border rounded-md px-3 py-2"
+                    >
+                      <option value="public">🌍 Public - Anyone can join</option>
+                      <option value="private">🔒 Private - Need room code to join</option>
+                    </select>
+                    <p className="text-xs text-gray-500">
+                      Public rooms appear in the browse list. Private rooms require a join code.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
                     <Label htmlFor="maxPlayers">Maximum Players</Label>
                     <select
                       id="maxPlayers"
@@ -93,19 +110,17 @@ export default function CreateRoomPage() {
                   </div>
 
                   <div className="bg-blue-50 p-4 rounded-md">
-                    <p className="text-sm text-blue-800">
+                    <p className="text-sm text-blue-800 mb-2">
                       <strong>Note:</strong> After creating the room, you'll receive a unique join code that others can use to join your room.
+                    </p>
+                    <p className="text-sm text-blue-800">
+                      When you start the game, you can select the difficulty and duration. The question will be chosen randomly from questions matching that difficulty.
                     </p>
                   </div>
 
-                  <div className="flex space-x-4">
-                    <Button type="submit" disabled={loading} className="flex-1">
-                      {loading ? "Creating..." : "Create Room"}
-                    </Button>
-                    <Button type="button" variant="outline" onClick={() => router.back()}>
-                      Cancel
-                    </Button>
-                  </div>
+                  <Button type="submit" disabled={loading} className="w-full">
+                    {loading ? "Creating..." : "Create Room"}
+                  </Button>
                 </form>
               </CardContent>
             </Card>

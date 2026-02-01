@@ -30,7 +30,6 @@ export async function getCurrentUser() {
         },
       })
     } catch (error) {
-      console.error("Error creating user:", error)
       return null
     }
   }

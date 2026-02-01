@@ -9,6 +9,55 @@ interface TestCase {
   explanation?: string
 }
 
+export async function GET(request: NextRequest) {
+  try {
+    const user = await getCurrentUser()
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const { searchParams } = new URL(request.url)
+    const gameId = searchParams.get("gameId")
+    const roomId = searchParams.get("roomId")
+
+    if (!gameId && !roomId) {
+      return NextResponse.json({ error: "gameId or roomId required" }, { status: 400 })
+    }
+
+    const where: any = {}
+    if (gameId) where.gameId = gameId
+    if (roomId) {
+      // Find active game for room
+      const game = await prisma.game.findFirst({
+        where: { roomId, endedAt: null },
+        select: { id: true }
+      })
+      if (game) where.gameId = game.id
+    }
+
+    const submissions = await prisma.submission.findMany({
+      where,
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true
+          }
+        }
+      },
+      orderBy: [
+        { isCorrect: 'desc' },
+        { submittedAt: 'asc' }
+      ]
+    })
+
+    return NextResponse.json(submissions)
+  } catch (error) {
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+  }
+}
+
+
 export async function POST(request: NextRequest) {
   try {
     const user = await getCurrentUser()
@@ -22,20 +71,38 @@ export async function POST(request: NextRequest) {
       where: { id: roomId }
     })
     
-    if (!room || room.status !== "in_progress") {
-      return NextResponse.json({ error: "Room not found or game not active" }, { status: 400 })
+    if (!room || !room.isActive) {
+      return NextResponse.json({ error: "Room is not active" }, { status: 400 })
     }
     
     // Get current game
     const game = await prisma.game.findFirst({
       where: {
         roomId: roomId,
-        endedAt: undefined
+        endedAt: null
       }
     })
     
     if (!game) {
       return NextResponse.json({ error: "No active game found" }, { status: 400 })
+    }
+
+    // Prevent duplicate submissions only if user already solved correctly
+    const existingSubmission = await prisma.submission.findFirst({
+      where: {
+        gameId: game.id,
+        userId: user.id
+      }
+    })
+
+    if (existingSubmission && existingSubmission.isCorrect) {
+      return NextResponse.json({ 
+        error: "You have already submitted a correct solution for this game",
+        submission: {
+          id: existingSubmission.id,
+          isCorrect: existingSubmission.isCorrect
+        }
+      }, { status: 409 })
     }
     
     // Get question
@@ -95,54 +162,103 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Calculate score based on correctness, execution time, and code length
-    let score = 0
-    let codeLength = code.trim().length
+    // Create or update submission in database (allow resubmissions if incorrect)
+    const submission = existingSubmission
+      ? await prisma.submission.update({
+          where: { id: existingSubmission.id },
+          data: {
+            code: code.trim(),
+            language,
+            isCorrect: evaluation.isCorrect,
+            feedback: evaluation.feedback,
+            executionTime: evaluation.executionTime,
+            submittedAt: new Date(),
+          }
+        })
+      : await prisma.submission.create({
+          data: {
+            id: crypto.randomUUID(),
+            gameId: game.id,
+            userId: user.id,
+            questionId: game.questionId,
+            code: code.trim(),
+            language,
+            isCorrect: evaluation.isCorrect,
+            feedback: evaluation.feedback,
+            executionTime: evaluation.executionTime,
+          }
+        })
 
-    if (evaluation.isCorrect) {
-      // Base score for correct solution
-      score = 100
-
-      // Speed bonus: up to 30 points for fast execution
-      if (evaluation.executionTime < 100) {
-        score += 30 // Perfect speed
-      } else if (evaluation.executionTime < 500) {
-        score += 20 // Good speed
-      } else if (evaluation.executionTime < 1000) {
-        score += 10 // Acceptable speed
-      }
-
-      // Code quality: slight bonus for concise code (max 10 points)
-      if (codeLength < 200) {
-        score += Math.min(10, Math.floor((200 - codeLength) / 20))
-      }
-    } else {
-      // Partial credit for incorrect solutions
-      // Check if code at least compiles/runs
-      if (evaluation.feedback !== "Code execution failed") {
-        score = 20 // Partial credit for attempt
-      }
-    }
-
-    // Create submission in database
-    const submission = await prisma.submission.create({
-      data: {
-        id: crypto.randomUUID(),
+    // Check if this is the first correct submission (instant winner)
+    const correctSubmissions = await prisma.submission.findMany({
+      where: {
         gameId: game.id,
-        userId: user.id,
-        questionId: game.questionId,
-        code: code.trim(),
-        language,
-        isCorrect: evaluation.isCorrect,
-        feedback: evaluation.feedback,
-        executionTime: evaluation.executionTime,
-        score: score,
+        isCorrect: true
+      },
+      orderBy: {
+        submittedAt: 'asc'
+      },
+      include: {
+        user: true
       }
     })
 
-    // Emit real-time update
-    // TODO: Emit real-time update via Socket.io server (implement in socket-server.js)
-    // socket.emit('submission-update', { roomId, userId, result, score, timestamp })
+    let shouldEndGame = false
+    let winnerData = null
+
+    // If this is the first correct submission, declare winner immediately
+    if (evaluation.isCorrect && correctSubmissions.length === 1 && correctSubmissions[0].userId === user.id) {
+      shouldEndGame = true
+      winnerData = {
+        winnerId: user.id,
+        winnerName: user.username || 'Anonymous'
+      }
+    } else {
+      // Check if all players have submitted (end game even without correct answers)
+      // Standardized participant parsing
+      let participants: any[] = []
+      try {
+        participants = Array.isArray(room.participants)
+          ? (room.participants as any[])
+          : JSON.parse(room.participants as unknown as string)
+      } catch (e) {
+        participants = []
+      }
+
+      const allSubmissions = await prisma.submission.findMany({
+        where: { gameId: game.id },
+        select: { userId: true },
+        distinct: ['userId']
+      })
+
+      const uniqueSubmitters = allSubmissions.map(s => s.userId)
+      const allPlayersSubmitted = participants.every((p: any) => {
+        const participantId = p?.id
+        return participantId && uniqueSubmitters.includes(participantId)
+      })
+
+      if (allPlayersSubmitted) {
+        shouldEndGame = true
+        
+        // Find winner (first person to submit correct, else last to submit)
+        const correctSubmission = await prisma.submission.findFirst({
+          where: { gameId: game.id, isCorrect: true },
+          orderBy: { submittedAt: 'asc' },
+          include: { user: true }
+        })
+
+        if (correctSubmission) {
+          winnerData = {
+            winnerId: correctSubmission.userId,
+            winnerName: correctSubmission.user.username || 'Anonymous',
+          }
+        }
+      }
+    }
+
+    // End game if needed - let socket server or explicit game-end handle it
+    // Removed redundant fetch call to prevent race conditions
+    // The socket server timer or explicit game-end call will handle ending
 
     return NextResponse.json({
       message: "Submission evaluated successfully",
@@ -150,10 +266,12 @@ export async function POST(request: NextRequest) {
         id: submission.id,
         userId: submission.userId,
         isCorrect: submission.isCorrect,
-        score: submission.score,
         feedback: submission.feedback,
-        executionTime: submission.executionTime
+        executionTime: submission.executionTime,
+        submittedAt: submission.submittedAt
       },
+      shouldEndGame: shouldEndGame,
+      winner: winnerData
     })
   } catch (error) {
     return NextResponse.json(

@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useSocket } from "@/hooks/use-socket"
+import { toast } from "sonner"
 import { MonacoCodeEditor } from "@/components/monaco-code-editor"
 import { Send, Loader2 } from "lucide-react"
 import { QuestionDisplay } from "./question-display"
@@ -14,7 +15,9 @@ import { QuestionDisplay } from "./question-display"
 interface CodeEditorProps {
   roomId: string
   userId: string
+  username?: string
   question?: any
+  timeLeft?: number | null
 }
 
 // Default code templates for each language
@@ -59,7 +62,7 @@ int main() {
 }`
 };
 
-export function CodeEditor({ roomId, userId, question: initialQuestion }: CodeEditorProps) {
+export function CodeEditor({ roomId, userId, username = "Player", question: initialQuestion, timeLeft: parentTimeLeft }: CodeEditorProps) {
   const [language, setLanguage] = useState("javascript")
   const [code, setCode] = useState(DEFAULT_CODE_TEMPLATES.javascript)
   const [loading, setLoading] = useState(false)
@@ -67,10 +70,10 @@ export function CodeEditor({ roomId, userId, question: initialQuestion }: CodeEd
   const [disqualified, setDisqualified] = useState(false)
   const [mode, setMode] = useState('normal')
   const [question, setQuestion] = useState<any>(initialQuestion)
-  const [recommendedTimeComplexity, setRecommendedTimeComplexity] = useState<string | null>(null)
-  const [timeLeft, setTimeLeft] = useState<number | null>(null)
+  const [timeLeft, setTimeLeft] = useState<number | null>(parentTimeLeft ?? null)
   const lastLengthRef = useRef(0)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const autoSubmittedRef = useRef(false)
   const router = useRouter()
   const { socket, isConnected } = useSocket()
 
@@ -81,59 +84,18 @@ export function CodeEditor({ roomId, userId, question: initialQuestion }: CodeEd
   };
 
   useEffect(() => {
-    // Fetch room data and question if not provided
-    fetch(`/api/rooms/${roomId}`)
-      .then(res => res.json())
-      .then(data => {
-        setMode(data.mode || 'normal');
-        
-        // Set question data if available
-        if (data.question) {
-          setQuestion(data.question);
-        }
-        // If we have questionId but no question data, fetch it directly
-        else if (data.questionId) {
-          fetch(`/api/questions/${data.questionId}`)
-            .then(res => res.json())
-            .then(questionData => {
-              if (questionData) {
-                setQuestion(questionData);
-              }
-            });
-        }
-        
-        // Set up timer if we have duration information
-        if (data.startedAt && data.durationSeconds) {
-          const startTime = new Date(data.startedAt).getTime();
-          const duration = data.durationSeconds * 1000;
-          const endTime = startTime + duration;
-          
-          // Clear any existing timer
-          if (timerRef.current) {
-            clearInterval(timerRef.current);
-          }
-          
-          // Enhanced timer with auto-submission when time runs out
-          const timerInterval = setInterval(() => {
-            const now = Date.now();
-            const remaining = Math.max(0, Math.floor((endTime - now) / 1000));
-            setTimeLeft(remaining);
-            
-            // If timer reaches zero, auto-submit and end game
-            if (remaining === 0) {
-              clearInterval(timerInterval);
-              if (!submitted) {
-                // Auto-submit current code
-                handleAutoSubmit();
-              }
-            }
-          }, 1000);
-          
-          // Store the interval ID for cleanup
-          timerRef.current = timerInterval;
-        }
-      });
-  }, [roomId, initialQuestion])
+    // Use question passed from parent instead of fetching again
+    if (initialQuestion) {
+      setQuestion(initialQuestion);
+    }
+  }, [initialQuestion])
+
+  // Sync timeLeft from parent
+  useEffect(() => {
+    if (parentTimeLeft !== undefined) {
+      setTimeLeft(parentTimeLeft)
+    }
+  }, [parentTimeLeft])
   
   // Cleanup the timer when component unmounts
   useEffect(() => {
@@ -165,7 +127,8 @@ export function CodeEditor({ roomId, userId, question: initialQuestion }: CodeEd
 
   // Handle auto-submission when timer expires
   const handleAutoSubmit = async () => {
-    if (submitted) return
+    if (submitted || autoSubmittedRef.current) return
+    autoSubmittedRef.current = true
 
     try {
       setLoading(true)
@@ -184,21 +147,24 @@ export function CodeEditor({ roomId, userId, question: initialQuestion }: CodeEd
 
       // Emit socket event for submission
       if (socket && isConnected) {
-        socket.emit("code-submitted", { roomId, userId })
+        socket.emit("code-submitted", { roomId, userId, username, isCorrect: false })
       }
 
       setSubmitted(true)
-
-      // Navigate to results
-      setTimeout(() => {
-        router.push(`/rooms/${roomId}/results`)
-      }, 500)
+      // Don't navigate here - let the socket time-expired event or page timer handle it
     } catch (error) {
-      console.error("Auto-submission failed:", error)
     } finally {
       setLoading(false)
     }
   }
+
+  // Watch for timeLeft reaching 0 and auto-submit
+  useEffect(() => {
+    if (timeLeft === 0 && !submitted && !autoSubmittedRef.current && question) {
+      handleAutoSubmit()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeLeft, submitted, question])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -222,30 +188,45 @@ export function CodeEditor({ roomId, userId, question: initialQuestion }: CodeEd
 
       const submissionData = await response.json()
 
+      if (!response.ok) {
+        toast.error(submissionData?.error || "Submission failed")
+        return
+      }
+
       // Emit socket event with isCorrect flag
       if (socket && isConnected) {
         socket.emit("code-submitted", {
           roomId,
           userId,
+          username,
           isCorrect: submissionData.submission?.isCorrect,
-          score: submissionData.submission?.score,
         })
 
-        // If solution is correct, check if this is the first correct solution (winner)
-        if (submissionData.submission?.isCorrect) {
+        // If game ended with a winner, emit winner-announced event
+        if (submissionData.shouldEndGame && submissionData.winner) {
           socket.emit("game-winner", {
             roomId,
-            winnerId: userId,
-            winnerName: "You",
-            score: submissionData.submission?.score,
+            winnerId: submissionData.winner.winnerId,
+            winnerName: submissionData.winner.winnerName,
           })
         }
       }
 
-      setSubmitted(true)
-      router.refresh()
+      if (submissionData.submission?.isCorrect) {
+        toast.success("✅ Correct solution!")
+        setSubmitted(true)
+
+        // If game ended, navigate to results after short delay
+        if (submissionData.shouldEndGame) {
+          setTimeout(() => {
+            router.push(`/rooms/${roomId}/results`)
+          }, 2000)
+        }
+      } else {
+        toast.error(submissionData.submission?.feedback || "❌ Incorrect solution")
+      }
     } catch (error) {
-      console.error("Submission error:", error)
+      toast.error("Submission failed. Please try again.")
     } finally {
       setLoading(false)
     }

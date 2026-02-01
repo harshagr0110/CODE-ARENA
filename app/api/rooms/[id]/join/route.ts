@@ -16,25 +16,24 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ i
       return NextResponse.json({ error: "Room not found" }, { status: 404 })
     }
 
-    // Participants are stored as a JSON string in a JSON field
+    // Standardized participant parsing
     let participants: any[] = []
     try {
       participants = Array.isArray(room.participants)
-        ? room.participants as unknown as any[]
+        ? (room.participants as any[])
         : JSON.parse(room.participants as unknown as string)
-    } catch {
+    } catch (e) {
       participants = []
     }
 
-    // Default to 10 if not present in schema
-    const maxPlayers = (room as any).maxPlayers ?? 10
+    const maxPlayers = typeof room.maxPlayers === "number" ? room.maxPlayers : 10
 
     if (participants.length >= maxPlayers) {
       return NextResponse.json({ error: "Room is full" }, { status: 400 })
     }
 
-    if (room.status && room.status !== "waiting") {
-      return NextResponse.json({ error: "Room is not accepting players" }, { status: 400 })
+    if (!room.isActive) {
+      return NextResponse.json({ error: "Room is not active" }, { status: 400 })
     }
 
     if (participants.some((p: any) => p.id === user.id)) {
@@ -45,12 +44,11 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ i
 
     await prisma.room.update({
       where: { id },
-      data: { participants: JSON.stringify(participants) },
+      data: { participants },
     })
 
     return NextResponse.json({ message: "Joined room successfully" })
   } catch (error) {
-    console.error("Error joining room:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

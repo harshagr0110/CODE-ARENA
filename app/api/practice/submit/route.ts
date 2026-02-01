@@ -40,7 +40,6 @@ export async function POST(request: NextRequest) {
     const result = await executeCode(code, language, cleanTestCases)
     return NextResponse.json(result)
   } catch (error) {
-    console.error("Error executing code:", error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Code execution failed" }, 
       { status: 500 }

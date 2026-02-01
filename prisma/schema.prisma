@@ -1,10 +1,12 @@
 generator client {
   provider = "prisma-client-js"
+  skipEngine = true
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
 }
 
 model User {
@@ -12,9 +14,6 @@ model User {
   clerkId      String   @unique @map("clerk_id")
   username     String   @unique
   email        String
-  totalScore   Int      @default(0) @map("total_score")
-  gamesPlayed  Int      @default(0) @map("games_played")
-  gamesWon     Int      @default(0) @map("games_won")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
@@ -31,11 +30,8 @@ model Question {
   title                 String
   description           String
   difficulty            String   @default("medium") // easy, medium, hard
-  recommendedTimeComplexity String? @map("recommended_time_complexity")
+  topics                String[] @default([]) // Array of topics: arrays, strings, dp, trees, graphs, etc.
   testCases             Json     @map("test_cases") // Array of {input, expectedOutput, explanation?}
-  questionType          String   @default("normal") @map("question_type") // normal, debugging, puzzle
-  createdAt             DateTime @default(now()) @map("created_at")
-  updatedAt             DateTime @updatedAt @map("updated_at")
   createdBy             String   @map("created_by")
 
   // Relations
@@ -55,11 +51,7 @@ model Submission {
   language        String   @default("javascript")
   isCorrect       Boolean  @default(false) @map("is_correct")
   feedback        String?  @map("feedback")
-  timeComplexity  String?  @map("time_complexity")
-  spaceComplexity String?  @map("space_complexity")
-  score           Int      @default(0)
   executionTime   Int?     @default(0) @map("execution_time") // in milliseconds
-  memoryUsed      Int?     @default(0) @map("memory_used") // in KB
   submittedAt     DateTime @default(now()) @map("submitted_at")
 
   // Relations
@@ -79,12 +71,11 @@ model Room {
   name         String?
   joinCode     String    @unique @map("join_code")
   maxPlayers   Int       @default(4) @map("max_players")
-  status       String    @default("waiting") // waiting, in_progress, finished
-  mode         String    @default("normal") // normal, shortest
+  isActive     Boolean   @default(true) @map("is_active") // true = active (waiting to start or in progress), false = finished/deleted
+  privacy      String    @default("public") // public or private
   participants Json      @default("[]") // Array of {id, username}
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
-  endedAt      DateTime? @map("ended_at")
 
   // Relations
   host         User   @relation("RoomHost", fields: [hostId], references: [id], onDelete: Cascade)
@@ -92,6 +83,7 @@ model Room {
 
   @@index([hostId])
   @@index([joinCode])
+  @@index([isActive])
   @@map("rooms")
 }
 
@@ -102,6 +94,7 @@ model Game {
   difficulty   String    @default("medium")
   questionId   String    @map("question_id")
   startedAt    DateTime  @default(now()) @map("started_at")
+  durationSeconds Int    @default(300) @map("duration_seconds")
   endedAt      DateTime? @map("ended_at")
   createdAt    DateTime  @default(now()) @map("created_at")
 

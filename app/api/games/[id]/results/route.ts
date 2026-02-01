@@ -46,7 +46,6 @@ export async function GET(
       language: submission.language,
       isCorrect: submission.isCorrect,
       executionTime: submission.executionTime,
-      score: submission.score,
       feedback: submission.feedback,
       submittedAt: submission.submittedAt,
       code: submission.code
@@ -61,7 +60,7 @@ export async function GET(
       room: {
         id: game.room.id,
         joinCode: game.room.joinCode,
-        status: game.room.status,
+        isActive: game.room.isActive,
         hostId: game.room.hostId,
       },
       game: {
@@ -82,7 +81,6 @@ export async function GET(
       submissions: submissions,
     });
   } catch (error) {
-    console.error("Error fetching game results:", error);
     return NextResponse.json(
       { error: "Failed to fetch game results" },
       { status: 500 }

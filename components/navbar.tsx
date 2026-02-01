@@ -5,15 +5,13 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/nextjs"
 import { Button } from "@/components/ui/button"
-import { Code, Menu, X, Trophy, Users, Home, BookOpen } from "lucide-react"
+import { Code, Menu, X, Users, Home, BookOpen } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: Home },
   { name: "Rooms", href: "/rooms", icon: Users },
-  { name: "Practice", href: "/practice", icon: Code },
-  { name: "Questions", href: "/questions", icon: BookOpen },
-  { name: "Leaderboard", href: "/leaderboard", icon: Trophy },
+  { name: "Problems", href: "/questions", icon: Code },
 ]
 
 export function Navbar() {

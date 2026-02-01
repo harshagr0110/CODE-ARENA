@@ -11,17 +11,23 @@ import { RoomRealtime } from "./room-realtime"
 import { CodeEditor } from "./code-editor"
 import { RoomActions } from "./room-actions"
 import StartGameButton from "./start-game-button"
+import { LiveLeaderboard } from "./live-leaderboard"
 
 export default function RoomPage() {
   const params = useParams() as { id?: string }
   const roomId = useMemo(() => (params?.id ? String(params.id) : ""), [params])
   const router = useRouter()
 
-    const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [room, setRoom] = useState<any | null>(null)
   const [user, setUser] = useState<{ id: string; username: string } | null>(null)
   const [question, setQuestion] = useState<any | null>(null)
+  const [timeLeft, setTimeLeft] = useState<number | null>(null)
+  const [refreshTick, setRefreshTick] = useState(0)
+  
+  // Navigation guard to prevent race conditions
+  const hasNavigatedRef = React.useRef(false)
 
   // Fetch current user and room details
   useEffect(() => {
@@ -31,34 +37,30 @@ export default function RoomPage() {
       setLoading(true)
       setError(null)
       try {
-        const [userRes, roomRes] = await Promise.all([
-          fetch("/api/me"), // optional; fallback to room GET response
-          fetch(`/api/rooms/${roomId}`),
-        ])
+        // Single API call to get room with all needed data
+        const roomRes = await fetch(`/api/rooms/${roomId}`)
 
-        // Room fetch is required
         if (!roomRes.ok) {
           const rj = await roomRes.json().catch(() => ({}))
           throw new Error(rj.error || `Failed to load room (${roomRes.status})`)
         }
         const roomJson = await roomRes.json()
 
-        // Try user endpoint; if missing, infer from participants later
+        // User data is inferred from participants (set by room-client.tsx)
         let me: any = null
-        if (userRes.ok) {
-          me = await userRes.json().catch(() => null)
+        const meRes = await fetch("/api/me").catch(() => null)
+        if (meRes?.ok) {
+          me = await meRes.json().catch(() => null)
         }
 
-        // If room has an active question, fetch it
+        // If room has an active question, fetch it once
         let questionData = null
-        if (roomJson.questionId) {
-          try {
-            const questionRes = await fetch(`/api/questions/${roomJson.questionId}`)
-            if (questionRes.ok) {
-              questionData = await questionRes.json()
-            }
-          } catch (e) {
-            console.error("Failed to fetch question:", e)
+        const questionId = (roomJson as any).questionId
+
+        if (questionId) {
+          const questionRes = await fetch(`/api/questions/${questionId}`).catch(() => null)
+          if (questionRes?.ok) {
+            questionData = await questionRes.json().catch(() => null)
           }
         }
 
@@ -77,7 +79,7 @@ export default function RoomPage() {
     return () => {
       cancelled = true
     }
-  }, [roomId])
+  }, [roomId, refreshTick])
 
   // Derive computed flags
   const participants: any[] = useMemo(() => {
@@ -92,22 +94,42 @@ export default function RoomPage() {
   const currentUserId = user?.id
   const isParticipant = currentUserId ? participants.some((p: any) => p.id === currentUserId) : false
   const isHost = currentUserId ? room?.hostId === currentUserId : false
-  const isGameInProgress = room?.status === "in_progress"
-  const isWaiting = room?.status === "waiting" || room?.status === "active"
+  const isGameInProgress = !!question && room?.isActive // Game in progress if room is active and question loaded
+  const isWaiting = room?.isActive && !question // Waiting if room is active but no game started yet
   
-  // If room has a questionId but no question object, fetch it
+  // Game timer - use server time for accurate sync
   useEffect(() => {
-    if (room?.questionId && !question) {
-      fetch(`/api/questions/${room.questionId}`)
-        .then(res => res.ok ? res.json() : null)
-        .then(data => {
-          if (data) {
-            setQuestion(data);
-          }
-        });
+    if (!isGameInProgress || !room?.startedAt) {
+      setTimeLeft(null)
+      return
     }
-  }, [room?.questionId, question]);
-
+    const duration = room.durationSeconds ?? 300
+    const gameStartTime = new Date(room.startedAt).getTime()
+    
+    const tick = () => {
+      const now = Date.now()
+      const remaining = Math.max(0, Math.floor((gameStartTime + duration * 1000 - now) / 1000))
+      setTimeLeft(remaining)
+      
+      // Auto-navigate to results when time expires (only once)
+      if (remaining === 0 && !hasNavigatedRef.current) {
+        hasNavigatedRef.current = true
+        setTimeout(() => {
+          router.push(`/rooms/${roomId}/results`)
+        }, 1000)
+      }
+    }
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [isGameInProgress, room?.startedAt, room?.durationSeconds, roomId, router])
+  // Reset navigation guard when game starts or room changes
+  useEffect(() => {
+    if (isWaiting) {
+      hasNavigatedRef.current = false
+    }
+  }, [isWaiting])
+  
   const handleRefresh = () => router.refresh()
 
   return (
@@ -130,6 +152,9 @@ export default function RoomPage() {
             <RoomRealtime 
               roomId={roomId} 
               userId={currentUserId || "guest"}
+              username={user?.username || "Player"}
+              onGameStart={() => setRefreshTick((t) => t + 1)}
+              onParticipantsChange={() => setRefreshTick((t) => t + 1)}
             >
               {/* Room header with info and actions */}
               <div className="flex items-start justify-between mb-6">
@@ -142,7 +167,7 @@ export default function RoomPage() {
                       {isWaiting ? "Waiting" : isGameInProgress ? "In Progress" : "Finished"}
                     </Badge>
                   </div>
-                  <div className="flex items-center gap-4 text-sm text-gray-600">
+                  <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
                     <div className="flex items-center gap-1">
                       <span className="font-medium">Join Code:</span>
                       <code className="px-2 py-1 bg-blue-50 text-blue-700 rounded font-mono font-bold">
@@ -153,6 +178,12 @@ export default function RoomPage() {
                       <span className="font-medium">Players:</span> {participants.length}
                       {room.maxPlayers ? ` / ${room.maxPlayers}` : ""}
                     </div>
+                    {isGameInProgress && (
+                      <div className="flex items-center gap-2 text-blue-700 font-semibold">
+                        <span className="px-2 py-1 rounded bg-blue-50">Time Left: {timeLeft !== null ? `${Math.floor((timeLeft || 0) / 60)}m ${Math.max(0, (timeLeft || 0) % 60)}s` : "--"}</span>
+                        <span className="px-2 py-1 rounded bg-slate-100">{room.difficulty || "medium"}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -168,47 +199,9 @@ export default function RoomPage() {
               )}
 
               {/* Room content - different UI based on status */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Left column - Players list and controls */}
-                <div>
-                  {/* Players list */}
-                  <Card className="mb-6">
-                    <CardHeader>
-                      <CardTitle>Players</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <ul className="space-y-2">
-                        {participants.map((p: any) => (
-                          <li key={p.id} className="flex items-center justify-between">
-                            <span>{p.username || p.id}</span>
-                            {room.hostId === p.id && (
-                              <span className="text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-800">Host</span>
-                            )}
-                          </li>
-                        ))}
-                        {participants.length === 0 && (
-                          <li className="text-gray-500 text-sm">No players have joined yet</li>
-                        )}
-                      </ul>
-                    </CardContent>
-                  </Card>
-
-                  {/* Game controls - only show if in waiting status and participant */}
-                  {isParticipant && isWaiting && (
-                    <div className="mb-6">
-                      <StartGameButton 
-                        roomId={roomId}
-                        roomName={room.name || `Room ${room.joinCode}`}
-                        isHost={isHost}
-                        playerCount={participants.length}
-                        disabled={participants.length < 2}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                {/* Right column - Game or waiting area */}
-                <div>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Main area: question / code / waiting */}
+                <div className="lg:col-span-2 space-y-6">
                   {!isParticipant ? (
                     <Card>
                       <CardContent className="py-10 text-center">
@@ -223,7 +216,7 @@ export default function RoomPage() {
                       <CardContent className="text-center py-6">
                         <p className="text-gray-600 mb-4">
                           {isHost 
-                            ? "As the host, you can start the game when everyone is ready." 
+                            ? "Pick difficulty & duration, then start when everyone is ready." 
                             : "Waiting for the host to start the game..."}
                         </p>
                         {!isHost && participants.length < 2 && (
@@ -234,7 +227,13 @@ export default function RoomPage() {
                   ) : isGameInProgress ? (
                     <>
                       {room.questionId || question ? (
-                        <CodeEditor roomId={roomId} userId={currentUserId || "guest"} question={question} />
+                        <CodeEditor 
+                          roomId={roomId} 
+                          userId={currentUserId || "guest"}
+                          username={user?.username || "Player"}
+                          question={question}
+                          timeLeft={timeLeft}
+                        />
                       ) : (
                         <Card>
                           <CardHeader>
@@ -262,6 +261,47 @@ export default function RoomPage() {
                         </Button>
                       </CardContent>
                     </Card>
+                  )}
+                </div>
+
+                {/* Sidebar: players, leaderboard and controls */}
+                <div className="space-y-6">
+                  {isGameInProgress && (
+                    <LiveLeaderboard roomId={roomId} isGameActive={isGameInProgress} />
+                  )}
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center justify-between">
+                        <span>Players</span>
+                        <span className="text-xs text-gray-500">{participants.length}{room.maxPlayers ? ` / ${room.maxPlayers}` : ""}</span>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <ul className="space-y-2">
+                        {participants.map((p: any) => (
+                          <li key={p.id} className="flex items-center justify-between">
+                            <span>{p.username || p.id}</span>
+                            {room.hostId === p.id && (
+                              <span className="text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-800">Host</span>
+                            )}
+                          </li>
+                        ))}
+                        {participants.length === 0 && (
+                          <li className="text-gray-500 text-sm">No players have joined yet</li>
+                        )}
+                      </ul>
+                    </CardContent>
+                  </Card>
+
+                  {isParticipant && isWaiting && (
+                    <StartGameButton 
+                      roomId={roomId}
+                      roomName={room.name || `Room ${room.joinCode}`}
+                      isHost={isHost}
+                      playerCount={participants.length}
+                      disabled={participants.length < 2}
+                    />
                   )}
                 </div>
               </div>

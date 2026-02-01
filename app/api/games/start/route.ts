@@ -12,9 +12,7 @@ export async function POST(request: NextRequest) {
     const { 
       roomId, 
       difficulty = "medium", 
-      durationSeconds, 
-      mode = "normal",
-      tier = "beginner"
+      durationSeconds = 300
     } = await request.json()
 
     if (!roomId) {
@@ -34,18 +32,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Only the room host can start the game" }, { status: 403 })
     }
 
-    if (room.status !== "waiting" && room.status !== "active") {
-      return NextResponse.json({ error: "Room is not available for a new game. It may already be finished or in progress." }, { status: 400 })
+    if (!room.isActive) {
+      return NextResponse.json({ error: "Room is not active. Game may have already ended." }, { status: 400 })
     }
 
-    // Parse participants from JSON field
-    let participants: any[] = [];
+    // Standardized participant parsing
+    let participants: any[] = []
     try {
-      participants = Array.isArray(room.participants) 
-        ? room.participants as any[]
-        : JSON.parse(room.participants as unknown as string);
+      participants = Array.isArray(room.participants)
+        ? (room.participants as any[])
+        : JSON.parse(room.participants as unknown as string)
     } catch (e) {
-      participants = [];
+      participants = []
     }
 
     if (participants.length < 2) {
@@ -56,7 +54,6 @@ export async function POST(request: NextRequest) {
     const questions = await prisma.question.findMany({
       where: {
         difficulty: difficulty,
-        questionType: "normal",
       },
     })
 
@@ -78,17 +75,9 @@ export async function POST(request: NextRequest) {
         roomId: roomId,
         questionId: randomQuestion.id,
         difficulty: difficulty,
-        startedAt: new Date(),
+        startedAt: startedAt,
+        durationSeconds: durationSeconds || 300,
       }
-    })
-    
-    // Update the room with game info
-    const updatedRoom = await prisma.room.update({
-      where: { id: roomId },
-      data: {
-        status: "in_progress",
-        mode: mode || "normal",
-      },
     })
 
     return NextResponse.json({
@@ -100,10 +89,7 @@ export async function POST(request: NextRequest) {
         difficulty,
         startedAt,
         durationSeconds: durationSeconds || 300,
-        mode,
-        tier,
       },
-      room: updatedRoom,
       participants,
     })
   } catch (error: unknown) {

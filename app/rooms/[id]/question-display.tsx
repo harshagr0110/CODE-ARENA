@@ -46,8 +46,20 @@ export function QuestionDisplay({ question, timeLeft }: QuestionDisplayProps) {
             {question.difficulty}
           </Badge>
         </div>
+        
+        {/* Topics Display */}
+        {question.topics && question.topics.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-2">
+            {question.topics.map((topic: string) => (
+              <Badge key={topic} variant="outline" className="text-xs">
+                {topic}
+              </Badge>
+            ))}
+          </div>
+        )}
+        
         {timeLeft !== null && timeLeft !== undefined && (
-          <div className="text-sm font-medium">
+          <div className="text-sm font-medium mt-2">
             Time Left: {Math.floor(timeLeft / 60)}m {timeLeft % 60}s
           </div>
         )}
@@ -83,13 +95,11 @@ export function QuestionDisplay({ question, timeLeft }: QuestionDisplayProps) {
                 </div>
               ))}
             </div>
-          </div>
-        )}
-        
-        {question.recommendedTimeComplexity && (
-          <div className="mt-3 text-sm">
-            <span className="font-medium">Required Time Complexity: </span>
-            <code className="px-1 py-0.5 bg-gray-100 rounded text-sm">{question.recommendedTimeComplexity}</code>
+            {testCases.length > 2 && (
+              <p className="text-xs text-gray-600">
+                {testCases.length - 2} additional test case{testCases.length - 2 === 1 ? '' : 's'} hidden; all cases run when you submit.
+              </p>
+            )}
           </div>
         )}
       </CardContent>

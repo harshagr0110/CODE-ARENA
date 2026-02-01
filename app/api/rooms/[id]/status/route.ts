@@ -24,9 +24,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     // Check if there's an active game with a question
     let gameStarted = false
-    if (room.status === "in_progress") {
+    if (room.isActive) {
       const activeGame = await prisma.game.findFirst({
-        where: { roomId: id, endedAt: undefined }
+        where: { roomId: id, endedAt: null }
       })
       gameStarted = !!activeGame?.questionId
     }
@@ -34,7 +34,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const playerCount = participants.length
 
     return NextResponse.json({
-      status: room.status,
+      isActive: room.isActive,
       playerCount,
       maxPlayers: room.maxPlayers,
       gameStarted,

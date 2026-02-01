@@ -26,10 +26,10 @@ export async function POST(
       return NextResponse.json({ error: "No game found" }, { status: 404 });
     }
 
-    // Simple update to mark the room as finished
+    // Simple update to mark the room as finished (no longer active)
     await prisma.room.update({
       where: { id: roomId },
-      data: { status: "finished" }
+      data: { isActive: false }
     });
 
     return NextResponse.json({
@@ -38,7 +38,6 @@ export async function POST(
       gameId: game.id
     });
   } catch (error) {
-    console.error("Error ending game:", error);
     return NextResponse.json({ error: "Failed to end game" }, { status: 500 });
   }
 }

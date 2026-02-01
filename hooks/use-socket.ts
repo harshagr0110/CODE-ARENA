@@ -18,7 +18,6 @@ export function useSocket() {
     newSocket.on("connect", () => setIsConnected(true))
     newSocket.on("disconnect", () => setIsConnected(false))
     newSocket.on("connect_error", (error: any) => {
-      console.warn("Socket connection error:", error)
     })
 
     setSocket(newSocket)
