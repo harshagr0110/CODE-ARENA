@@ -71,58 +71,93 @@ CREATE TABLE IF NOT EXISTS "games" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "users_clerk_id_key" ON "users"("clerk_id");
+CREATE UNIQUE INDEX IF NOT EXISTS "users_clerk_id_key" ON "users"("clerk_id");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "users_username_key" ON "users"("username");
+CREATE UNIQUE INDEX IF NOT EXISTS "users_username_key" ON "users"("username");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "questions_id_key" ON "questions"("id");
+CREATE UNIQUE INDEX IF NOT EXISTS "questions_id_key" ON "questions"("id");
 
 -- CreateIndex
-CREATE INDEX "submissions_game_id_idx" ON "submissions"("game_id");
+CREATE INDEX IF NOT EXISTS "submissions_game_id_idx" ON "submissions"("game_id");
 
 -- CreateIndex
-CREATE INDEX "submissions_user_id_idx" ON "submissions"("user_id");
+CREATE INDEX IF NOT EXISTS "submissions_user_id_idx" ON "submissions"("user_id");
 
 -- CreateIndex
-CREATE INDEX "submissions_question_id_idx" ON "submissions"("question_id");
+CREATE INDEX IF NOT EXISTS "submissions_question_id_idx" ON "submissions"("question_id");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "rooms_join_code_key" ON "rooms"("join_code");
+CREATE UNIQUE INDEX IF NOT EXISTS "rooms_join_code_key" ON "rooms"("join_code");
 
 -- CreateIndex
-CREATE INDEX "rooms_host_id_idx" ON "rooms"("host_id");
+CREATE INDEX IF NOT EXISTS "rooms_host_id_idx" ON "rooms"("host_id");
 
 -- CreateIndex
-CREATE INDEX "rooms_join_code_idx" ON "rooms"("join_code");
+CREATE INDEX IF NOT EXISTS "rooms_join_code_idx" ON "rooms"("join_code");
 
 -- CreateIndex
-CREATE INDEX "rooms_is_active_idx" ON "rooms"("is_active");
+CREATE INDEX IF NOT EXISTS "rooms_is_active_idx" ON "rooms"("is_active");
 
 -- CreateIndex
-CREATE INDEX "games_room_id_idx" ON "games"("room_id");
+CREATE INDEX IF NOT EXISTS "games_room_id_idx" ON "games"("room_id");
 
 -- CreateIndex
-CREATE INDEX "games_question_id_idx" ON "games"("question_id");
+CREATE INDEX IF NOT EXISTS "games_question_id_idx" ON "games"("question_id");
 
 -- AddForeignKey
-ALTER TABLE "questions" ADD CONSTRAINT "questions_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'questions_created_by_fkey') THEN
+        ALTER TABLE "questions" ADD CONSTRAINT "questions_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "submissions" ADD CONSTRAINT "submissions_game_id_fkey" FOREIGN KEY ("game_id") REFERENCES "games"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'submissions_game_id_fkey') THEN
+        ALTER TABLE "submissions" ADD CONSTRAINT "submissions_game_id_fkey" FOREIGN KEY ("game_id") REFERENCES "games"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "submissions" ADD CONSTRAINT "submissions_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'submissions_user_id_fkey') THEN
+        ALTER TABLE "submissions" ADD CONSTRAINT "submissions_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "submissions" ADD CONSTRAINT "submissions_question_id_fkey" FOREIGN KEY ("question_id") REFERENCES "questions"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'submissions_question_id_fkey') THEN
+        ALTER TABLE "submissions" ADD CONSTRAINT "submissions_question_id_fkey" FOREIGN KEY ("question_id") REFERENCES "questions"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "rooms" ADD CONSTRAINT "rooms_host_id_fkey" FOREIGN KEY ("host_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'rooms_host_id_fkey') THEN
+        ALTER TABLE "rooms" ADD CONSTRAINT "rooms_host_id_fkey" FOREIGN KEY ("host_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "games" ADD CONSTRAINT "games_room_id_fkey" FOREIGN KEY ("room_id") REFERENCES "rooms"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'games_room_id_fkey') THEN
+        ALTER TABLE "games" ADD CONSTRAINT "games_room_id_fkey" FOREIGN KEY ("room_id") REFERENCES "rooms"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "games" ADD CONSTRAINT "games_question_id_fkey" FOREIGN KEY ("question_id") REFERENCES "questions"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'games_question_id_fkey') THEN
+        ALTER TABLE "games" ADD CONSTRAINT "games_question_id_fkey" FOREIGN KEY ("question_id") REFERENCES "questions"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+    END IF;
+END $$;
