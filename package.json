@@ -3,14 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "prisma generate && prisma migrate deploy && next build",
+    "build": "prisma generate && node scripts/pre-build.js && prisma migrate deploy && next build",
     "dev": "next dev",
     "lint": "next lint",
     "start": "next start",
     "socket": "node socket-server.js",
     "postinstall": "prisma generate",
     "db-push": "npx prisma db push",
-    "seed": "tsx prisma/seed.ts"
+    "seed": "tsx prisma/seed.ts",
+    "migrate:resolve": "npx prisma migrate resolve --rolled-back 0_init"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
