@@ -34,33 +34,18 @@ export async function POST(
       )
     }
 
-    // Delete all related data in the correct order to respect foreign key constraints
-    await prisma.$transaction(async (tx) => {
-      // Delete all submissions for games in this room
-      const games = await tx.game.findMany({
-        where: { roomId: roomId },
-        select: { id: true }
-      })
-
-      for (const game of games) {
-        await tx.submission.deleteMany({
-          where: { gameId: game.id }
-        })
+    // CRITICAL FIX: Only mark room as inactive, don't delete data
+    // Users may want to view game results after finishing
+    await prisma.room.update({
+      where: { id: roomId },
+      data: {
+        isActive: false,
+        updatedAt: new Date()
       }
-
-      // Delete all games for this room
-      await tx.game.deleteMany({
-        where: { roomId: roomId }
-      })
-
-      // Delete the room
-      await tx.room.delete({
-        where: { id: roomId }
-      })
     })
 
     return NextResponse.json({
-      message: "Room and all related data deleted successfully",
+      message: "Room finished successfully",
     })
   } catch (error) {
     

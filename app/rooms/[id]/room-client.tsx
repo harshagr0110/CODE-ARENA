@@ -1,21 +1,23 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useSocket } from "@/hooks/use-socket"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 
 interface RoomClientProps {
   roomId: string
   userId: string
+  username: string
   initialJoined: boolean
+  onJoined?: () => void
 }
 
-export function RoomClient({ roomId, userId, initialJoined }: RoomClientProps) {
+export function RoomClient({ roomId, userId, username, initialJoined, onJoined }: RoomClientProps) {
   const [hasJoined, setHasJoined] = useState(initialJoined)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const router = useRouter()
+  const { socket, isConnected } = useSocket()
 
   const handleJoinRoom = async () => {
     setLoading(true)
@@ -27,7 +29,15 @@ export function RoomClient({ roomId, userId, initialJoined }: RoomClientProps) {
         throw new Error(data.error || "Failed to join room")
       }
       setHasJoined(true)
-      router.refresh()
+      
+      // CRITICAL: Notify parent immediately that user has joined
+      // This updates the participant count in real-time
+      if (onJoined) onJoined()
+      
+      // Emit socket event to notify other players (socket-server broadcasts it)
+      if (socket && isConnected) {
+        socket.emit("join-room", { roomId, userId, username })
+      }
     } catch (e: any) {
       setError(e?.message || "Failed to join room")
     } finally {

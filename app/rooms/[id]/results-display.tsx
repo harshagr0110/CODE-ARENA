@@ -13,6 +13,13 @@ interface Submission {
   executionTime?: number;
   codeLength?: number;
   submittedAt: string;
+  testResults?: Array<{
+    input: string;
+    expectedOutput: string;
+    actualOutput: string;
+    errorMessage?: string;
+    passed: boolean;
+  }>;
 }
 
 interface ResultsDisplayProps {
@@ -32,7 +39,7 @@ export function ResultsDisplay({ roomId }: ResultsDisplayProps) {
     const fetchResults = async () => {
       try {
         setLoading(true)
-        // First get room to find gameId
+        // Single parallel fetch to load room data
         const roomRes = await fetch(`/api/rooms/${roomId}`)
         if (!roomRes.ok) throw new Error("Failed to load room")
         const roomData = await roomRes.json()
@@ -162,36 +169,59 @@ export function ResultsDisplay({ roomId }: ResultsDisplayProps) {
               </thead>
               <tbody>
                 {sortedResults.map((submission, index) => (
-                  <tr key={submission.id} className="border-b hover:bg-gray-50">
-                    <td className="py-3 px-3 font-medium">
-                      {index === 0
-                        ? "🥇"
-                        : index === 1
-                          ? "🥈"
-                          : index === 2
-                            ? "🥉"
-                            : `#${index + 1}`}
-                    </td>
-                    <td className="py-3 px-3">{submission.username || "Anonymous"}</td>
-                    <td className="py-3 px-3">{submission.language}</td>
-                    <td className="py-3 px-3">
-                      {submission.isCorrect ? (
-                        <Badge
-                          variant="outline"
-                          className="bg-green-100 text-green-800"
-                        >
-                          Correct
-                        </Badge>
-                      ) : (
-                        <Badge variant="destructive" className="bg-red-100 text-red-800">
-                          Incorrect
-                        </Badge>
-                      )}
-                    </td>
-                    <td className="py-3 px-3">
-                      {new Date(submission.submittedAt).toLocaleTimeString()}
-                    </td>
-                  </tr>
+                  <React.Fragment key={submission.id}>
+                    <tr className="border-b hover:bg-gray-50">
+                      <td className="py-3 px-3 font-medium">
+                        {index === 0
+                          ? "🥇"
+                          : index === 1
+                            ? "🥈"
+                            : index === 2
+                              ? "🥉"
+                              : `#${index + 1}`}
+                      </td>
+                      <td className="py-3 px-3">{submission.username || "Anonymous"}</td>
+                      <td className="py-3 px-3">{submission.language}</td>
+                      <td className="py-3 px-3">
+                        {submission.isCorrect ? (
+                          <Badge
+                            variant="outline"
+                            className="bg-green-100 text-green-800"
+                          >
+                            Correct
+                          </Badge>
+                        ) : (
+                          <Badge variant="destructive" className="bg-red-100 text-red-800">
+                            {submission.testResults && submission.testResults.length > 0
+                              ? `${submission.testResults.filter(t => t.passed).length}/${submission.testResults.length}`
+                              : "Incorrect"}
+                          </Badge>
+                        )}
+                      </td>
+                      <td className="py-3 px-3">
+                        {new Date(submission.submittedAt).toLocaleTimeString()}
+                      </td>
+                    </tr>
+                    {submission.testResults && submission.testResults.length > 0 && (
+                      <tr className="bg-gray-50 border-b">
+                        <td colSpan={5} className="py-2 px-3">
+                          <div className="text-xs space-y-1">
+                            {submission.testResults.map((result, idx) => (
+                              <div key={idx} className="flex gap-2">
+                                <span className={result.passed ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>
+                                  {result.passed ? '✅' : '❌'}
+                                </span>
+                                <span className="text-gray-600">
+                                  Test {idx + 1}: {result.passed ? 'Passed' : 'Failed'}
+                                  {!result.passed && ` (Expected: "${result.expectedOutput}", Got: "${result.actualOutput.substring(0, 30)}")`}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>

@@ -8,7 +8,15 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     const user = await getCurrentUser()
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     const { id: roomId } = await context.params;
-    const room = await prisma.room.findUnique({ where: { id: roomId } })
+    const room = await prisma.room.findUnique({ 
+      where: { id: roomId },
+      include: {
+        games: {
+          where: { endedAt: null },
+          select: { id: true }
+        }
+      }
+    })
     if (!room) return NextResponse.json({ error: "Room not found" }, { status: 404 })
     
     // Standardized participant parsing
@@ -23,8 +31,16 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
 
     const isHost = room.hostId === user.id
     if (isHost) {
-      // If host leaves, delete the room
-      // Any active games will be cleaned up via cascade delete
+      // CRITICAL: Check if game is in progress
+      const hasActiveGame = room.games.length > 0
+      if (hasActiveGame) {
+        return NextResponse.json({ 
+          error: "Cannot leave while game is in progress. End the game first or disqualify yourself." 
+        }, { status: 400 })
+      }
+      
+      // If host leaves and no active games, delete the room
+      // Any completed games will be cleaned up via cascade delete
       await prisma.room.delete({ where: { id: roomId } })
       return NextResponse.json({ message: "Host left, room deleted" })
     } else {

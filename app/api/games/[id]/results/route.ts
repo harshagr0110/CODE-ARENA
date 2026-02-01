@@ -38,6 +38,24 @@ export async function GET(
       return NextResponse.json({ error: "Game not found" }, { status: 404 });
     }
 
+    // CRITICAL: Access control - only allow users who were in the room (in participants list)
+    // Parse participants from room
+    let roomParticipants: any[] = []
+    try {
+      roomParticipants = Array.isArray(game.room.participants)
+        ? (game.room.participants as any[])
+        : JSON.parse(game.room.participants as unknown as string)
+    } catch (e) {
+      roomParticipants = []
+    }
+
+    const isRoomParticipant = roomParticipants.some((p: any) => p.id === user.id)
+    const isHost = game.room.hostId === user.id;
+    
+    if (!isRoomParticipant && !isHost) {
+      return NextResponse.json({ error: "Forbidden: You did not participate in this game" }, { status: 403 });
+    }
+
     // Format submissions
     const submissions = game.submissions.map((submission) => ({
       id: submission.id,
@@ -47,6 +65,7 @@ export async function GET(
       isCorrect: submission.isCorrect,
       executionTime: submission.executionTime,
       feedback: submission.feedback,
+      testResults: submission.testResults || [],
       submittedAt: submission.submittedAt,
       code: submission.code
     }));

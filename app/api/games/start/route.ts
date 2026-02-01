@@ -50,6 +50,29 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Need at least 2 players to start" }, { status: 400 })
     }
 
+    // Check if game already exists for this room
+    const existingGame = await prisma.game.findFirst({
+      where: {
+        roomId: roomId,
+        endedAt: null
+      }
+    })
+
+    if (existingGame) {
+      return NextResponse.json({
+        message: "Game already started",
+        game: {
+          id: existingGame.id,
+          roomId: roomId,
+          questionId: existingGame.questionId,
+          difficulty: existingGame.difficulty,
+          startedAt: existingGame.startedAt,
+          durationSeconds: existingGame.durationSeconds,
+        },
+        participants,
+      })
+    }
+
     // Get a random question from the database based on difficulty
     const questions = await prisma.question.findMany({
       where: {

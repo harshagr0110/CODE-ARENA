@@ -1,0 +1,490 @@
+{
+  "analysis_timestamp": "2025-02-02",
+  "total_issues_found": 28,
+  "critical_issues": 8,
+  "high_severity_issues": 10,
+  "medium_severity_issues": 7,
+  "low_severity_issues": 3,
+  "issues": [
+    {
+      "id": 1,
+      "severity": "critical",
+      "category": "Data Flow Consistency",
+      "title": "Room state inconsistency: gameId not stored in Room model",
+      "description": "The Room model does not have a gameId field. The /api/rooms/[id] endpoint derives gameId from the active game, but the client sometimes expects questionId/gameId/startedAt to be in room object. This causes race conditions when game data is not immediately synced.",
+      "files": [
+        {
+          "path": "app/api/rooms/[id]/route.ts",
+          "lines": "90-110",
+          "issue": "questionId, startedAt, durationSeconds are derived from activeGame but not stored in Room. If game query is slow, clients get stale data."
+        },
+        {
+          "path": "prisma/schema.prisma",
+          "lines": "70-90",
+          "issue": "Room model missing gameId field to track current game"
+        }
+      ],
+      "impact": "Race condition: clients may request old gameId or have missing question data"
+    },
+    {
+      "id": 2,
+      "severity": "critical",
+      "category": "Authentication/Authorization",
+      "title": "end-game route lacks authentication check",
+      "description": "The /api/rooms/[id]/end-game endpoint does not verify user authentication or authorization (must be host). Any authenticated or unauthenticated user can call this endpoint and end a game.",
+      "files": [
+        {
+          "path": "app/api/rooms/[id]/end-game/route.ts",
+          "lines": "1-40",
+          "issue": "No getCurrentUser() call, no host verification before updating room.isActive"
+        }
+      ],
+      "impact": "Anyone can end a game in any room, breaking game integrity"
+    },
+    {
+      "id": 3,
+      "severity": "critical",
+      "category": "Game Lifecycle",
+      "title": "Multiple winner determination logic creating race conditions",
+      "description": "Winner is determined in 3 different places with different logic: /api/games/end (server timer), /api/submissions POST (first correct submission), and socket server. This causes inconsistent winner results and potential missing winners.",
+      "files": [
+        {
+          "path": "app/api/games/end/route.ts",
+          "lines": "50-65",
+          "issue": "Finds first correct submission or first submission as winner"
+        },
+        {
+          "path": "app/api/submissions/route.ts",
+          "lines": "260-320",
+          "issue": "Also tries to determine winner based on correctSubmissions count"
+        },
+        {
+          "path": "socket-server.js",
+          "lines": "115-130",
+          "issue": "Socket server can also receive game-winner event"
+        }
+      ],
+      "impact": "Inconsistent winner results, potential tied wins not resolved correctly"
+    },
+    {
+      "id": 4,
+      "severity": "critical",
+      "category": "Socket/API Synchronization",
+      "title": "Socket game-started and API response startedAt timestamp mismatch",
+      "description": "game-started socket event uses startTime from client (Date.now()), but API returns game.startedAt from DB. If there's network delay, clients synchronize on different start times causing timer desync.",
+      "files": [
+        {
+          "path": "app/rooms/[id]/start-game-button.tsx",
+          "lines": "55-65",
+          "issue": "Uses data.game.startedAt from API but declares serverStartTime = Date.now() as fallback, mixing timestamps"
+        },
+        {
+          "path": "socket-server.js",
+          "lines": "55-70",
+          "issue": "Socket stores startTime locally without validation against actual game.startedAt from DB"
+        }
+      ],
+      "impact": "Game timers desynchronized across clients, unfair game duration"
+    },
+    {
+      "id": 5,
+      "severity": "critical",
+      "category": "Room/Game Lifecycle",
+      "title": "finish-game route deletes all data including active submissions",
+      "description": "The finish-game endpoint (/api/rooms/[id]/finish-game) deletes all games and submissions when called. However, if called while game is still active, it loses all submission data. No check for game.endedAt.",
+      "files": [
+        {
+          "path": "app/api/rooms/[id]/finish-game/route.ts",
+          "lines": "30-60",
+          "issue": "Deletes submissions for games regardless of whether game.endedAt is set. Should only delete if game.endedAt is NOT null"
+        }
+      ],
+      "impact": "Active game submissions can be lost if host clicks 'finish' too early"
+    },
+    {
+      "id": 6,
+      "severity": "critical",
+      "category": "Edge Cases",
+      "title": "Socket disconnect during game causes incomplete submission handling",
+      "description": "If socket disconnects during game, the submission submission-update event is never broadcast to other players. The client-side submission succeeds but other players don't see the update.",
+      "files": [
+        {
+          "path": "app/rooms/[id]/code-editor.tsx",
+          "lines": "200-250",
+          "issue": "Submission is sent to API but socket emission of submission-update only happens on success (no error handling for socket emit)"
+        },
+        {
+          "path": "socket-server.js",
+          "lines": "85-110",
+          "issue": "Socket server receives code-submitted but clients may not be listening if they disconnected"
+        }
+      ],
+      "impact": "Live leaderboard doesn't update for all players if network is unstable"
+    },
+    {
+      "id": 7,
+      "severity": "critical",
+      "category": "Data Flow Consistency",
+      "title": "participants field sometimes string, sometimes array - inconsistent parsing",
+      "description": "The Room.participants field is stored as JSON but frequently needs manual parsing. Multiple files check Array.isArray() and fallback to JSON.parse(). If JSON is malformed, participants becomes empty array instead of throwing error, causing silent data loss.",
+      "files": [
+        {
+          "path": "app/api/rooms/route.ts",
+          "lines": "40-45",
+          "issue": "Creates room with participants as array directly"
+        },
+        {
+          "path": "app/api/rooms/[id]/route.ts",
+          "lines": "20-30",
+          "issue": "Parses participants with try-catch, silent fail on JSON error"
+        },
+        {
+          "path": "app/api/submissions/route.ts",
+          "lines": "275-285",
+          "issue": "Same try-catch pattern, participants silently becomes []"
+        }
+      ],
+      "impact": "If JSON is corrupted, participant data is lost silently, breaking room functionality"
+    },
+    {
+      "id": 8,
+      "severity": "critical",
+      "category": "Leaderboard/Results Logic",
+      "title": "Winner determination doesn't account for players who never submitted",
+      "description": "When determining winner, the code checks 'first person to submit correct' or 'first person to submit'. But if a player joins the room and never submits (disconnects), they're not counted in participant list when checking if 'allPlayersSubmitted'.",
+      "files": [
+        {
+          "path": "app/api/submissions/route.ts",
+          "lines": "290-310",
+          "issue": "Checks if all participants submitted, but participants array doesn't get updated when players disconnect"
+        }
+      ],
+      "impact": "Game may end prematurely if players disconnect before submitting, or may never end if new players join after game starts"
+    },
+    {
+      "id": 9,
+      "severity": "high",
+      "category": "Question/Submission Consistency",
+      "title": "Test cases can be string or array - inconsistent parsing causes evaluation errors",
+      "description": "Question.testCases is JSON stored in DB, but code sometimes expects array directly. Multiple files have duplicate parsing logic. If test cases are invalid JSON, execution fails silently.",
+      "files": [
+        {
+          "path": "app/api/submissions/route.ts",
+          "lines": "145-160",
+          "issue": "Parses testCases with typeof check and JSON.parse, but no error handling for invalid JSON"
+        },
+        {
+          "path": "app/practice/[id]/page.tsx",
+          "lines": "75-85",
+          "issue": "Normalizes testCases with try-catch but result is sometimes wrong if JSON is malformed"
+        }
+      ],
+      "impact": "Practice submissions may fail mysteriously if test case JSON is malformed"
+    },
+    {
+      "id": 10,
+      "severity": "high",
+      "category": "Edge Cases",
+      "title": "User can submit for a game that has already ended",
+      "description": "The /api/submissions POST endpoint checks if room.isActive but does NOT check if game.endedAt is null. A user can submit code after game has ended.",
+      "files": [
+        {
+          "path": "app/api/submissions/route.ts",
+          "lines": "80-95",
+          "issue": "Checks 'room.isActive' but game.endedAt is not verified. Game can be marked ended while room is still active."
+        }
+      ],
+      "impact": "Players can submit code after game ends, affecting leaderboard accuracy"
+    },
+    {
+      "id": 11,
+      "severity": "high",
+      "category": "Practice vs Multiplayer Modes",
+      "title": "Practice submissions create submission record with empty gameId",
+      "description": "In practice mode, submissions are created with gameId = \"\" (empty string). This violates DB schema expectations and causes issues when querying submissions.",
+      "files": [
+        {
+          "path": "app/api/submissions/route.ts",
+          "lines": "210-230",
+          "issue": "gameId: game?.id || \"\" - creates submissions with empty gameId for practice"
+        },
+        {
+          "path": "prisma/schema.prisma",
+          "lines": "50-55",
+          "issue": "gameId is mapped @map(\"game_id\") and required field, but submissions with \"\" are created"
+        }
+      ],
+      "impact": "Practice submissions pollute submissions table with invalid references, queries may break"
+    },
+    {
+      "id": 12,
+      "severity": "high",
+      "category": "Authentication/Authorization",
+      "title": "Rematch endpoint uses socket.io-client in server (anti-pattern)",
+      "description": "The /api/games/[id]/rematch endpoint instantiates a socket.io client to emit 'rematch-waiting' event. This is a server-side socket client that persists across requests, causing memory leaks and unexpected behavior.",
+      "files": [
+        {
+          "path": "app/api/games/[id]/rematch/route.ts",
+          "lines": "1-10",
+          "issue": "Creates socketClient.connect() at module level, persists across requests"
+        }
+      ],
+      "impact": "Memory leak, socket connections not cleaned up, rematch notifications may not work reliably"
+    },
+    {
+      "id": 13,
+      "severity": "high",
+      "category": "Room/Game Lifecycle",
+      "title": "Host leaving room deletes entire room but doesn't notify other players",
+      "description": "When host leaves room, room is deleted immediately via cascade delete. Other players still connected to the room via socket get disconnected without warning.",
+      "files": [
+        {
+          "path": "app/api/rooms/[id]/leave/route.ts",
+          "lines": "15-25",
+          "issue": "If isHost, deletes room without notifying socket server or other players"
+        }
+      ],
+      "impact": "Players in active game suddenly lose room access and game data"
+    },
+    {
+      "id": 14,
+      "severity": "high",
+      "category": "Data Flow Consistency",
+      "title": "Room.isActive field used for multiple states: waiting, in-progress, and finished",
+      "description": "isActive = true means 'room is not finished' (either waiting or in-progress). But code often conflates this with 'game in progress'. There's no field to distinguish waiting vs playing.",
+      "files": [
+        {
+          "path": "app/rooms/[id]/page.tsx",
+          "lines": "95-100",
+          "issue": "isGameInProgress defined as '!!question && room?.isActive', which is ambiguous"
+        },
+        {
+          "path": "app/api/rooms/[id]/end-game/route.ts",
+          "lines": "25-30",
+          "issue": "Sets isActive = false without knowing if this room had a game"
+        }
+      ],
+      "impact": "Confusion between room states causes incorrect UI display and logic errors"
+    },
+    {
+      "id": 15,
+      "severity": "high",
+      "category": "Leaderboard/Results Logic",
+      "title": "Results page doesn't validate that user is part of the game/room",
+      "description": "The /api/games/[id]/results endpoint returns all submissions without checking if requesting user is a participant. Any authenticated user can view any game results.",
+      "files": [
+        {
+          "path": "app/api/games/[id]/results/route.ts",
+          "lines": "15-30",
+          "issue": "Checks getCurrentUser() but doesn't verify user is in game.room.participants"
+        }
+      ],
+      "impact": "Privacy breach: users can view other players' code and solutions from games they weren't in"
+    },
+    {
+      "id": 16,
+      "severity": "high",
+      "category": "Edge Cases",
+      "title": "Timer can expire before all players load the question",
+      "description": "Socket emits game-started immediately, but if a slow client hasn't loaded the question yet, the timer will expire before they can even submit.",
+      "files": [
+        {
+          "path": "socket-server.js",
+          "lines": "55-75",
+          "issue": "game-started sets timer immediately, doesn't wait for clients to be ready"
+        }
+      ],
+      "impact": "Late-loading clients get auto-submitted with empty code, unfair game"
+    },
+    {
+      "id": 17,
+      "severity": "medium",
+      "category": "Code Execution",
+      "title": "C++ code wrapping doesn't check for main function correctly",
+      "description": "The wrapCppCode function checks for 'main()' or 'main(' but user might write 'int main()' or 'void main()'. The check is too simplistic.",
+      "files": [
+        {
+          "path": "lib/piston.ts",
+          "lines": "52-60",
+          "issue": "if (code.includes('main()') || code.includes('main(')) - doesn't account for return types"
+        }
+      ],
+      "impact": "C++ code might be double-wrapped with main function, causing compilation errors"
+    },
+    {
+      "id": 18,
+      "severity": "medium",
+      "category": "Question/Submission Consistency",
+      "title": "Test case input/expectedOutput can be empty strings or undefined",
+      "description": "When creating/uploading questions, test cases are cleaned by filtering '.filter((testCase: any) => testCase.input || testCase.expectedOutput)'. But input can legitimately be empty string (for some problems), so this filter is wrong.",
+      "files": [
+        {
+          "path": "app/api/questions/route.ts",
+          "lines": "20-30",
+          "issue": "Filters test cases with 'testCase.input || testCase.expectedOutput' which removes cases with empty input"
+        }
+      ],
+      "impact": "Valid test cases with empty input are silently discarded"
+    },
+    {
+      "id": 19,
+      "severity": "medium",
+      "category": "Edge Cases",
+      "title": "Join code collision despite collision detection",
+      "description": "The room creation endpoint tries to prevent join code collisions by looping 20 times. But if it fails, it falls back to timestamp-based code. Two rooms created simultaneously could get same timestamp code.",
+      "files": [
+        {
+          "path": "app/api/rooms/route.ts",
+          "lines": "40-60",
+          "issue": "Collision detection loop, then fallback to timestamp without random suffix in some cases"
+        }
+      ],
+      "impact": "Join code collision allows wrong player to join wrong room"
+    },
+    {
+      "id": 20,
+      "severity": "medium",
+      "category": "Data Flow Consistency",
+      "title": "participants array in Room is mutated directly without re-validation",
+      "description": "When adding/removing participants, the code pushes to the array and updates directly. If an attacker or race condition adds the same user twice, there's no deduplication.",
+      "files": [
+        {
+          "path": "app/api/rooms/[id]/route.ts",
+          "lines": "40-50",
+          "issue": "Pushes to participants array without checking for duplicates"
+        }
+      ],
+      "impact": "Same user appears twice in leaderboard and submission counts"
+    },
+    {
+      "id": 21,
+      "severity": "medium",
+      "category": "Practice vs Multiplayer Modes",
+      "title": "Practice page doesn't show test results clearly when execution fails",
+      "description": "Practice submission result shows testResults array but doesn't distinguish between 'code didn't compile' vs 'wrong answer'. Error messages are mixed with test results.",
+      "files": [
+        {
+          "path": "app/practice/[id]/page.tsx",
+          "lines": "200-250",
+          "issue": "Handles result display but doesn't clearly show compilation errors vs runtime errors vs wrong output"
+        }
+      ],
+      "impact": "Poor user experience debugging why practice submission failed"
+    },
+    {
+      "id": 22,
+      "severity": "medium",
+      "category": "Edge Cases",
+      "title": "User can join room after game has started",
+      "description": "The /api/rooms/[id]/join endpoint only checks room.isActive, not if a game is currently in progress. New players can join mid-game, breaking the participant count used for 'allPlayersSubmitted' logic.",
+      "files": [
+        {
+          "path": "app/api/rooms/[id]/join/route.ts",
+          "lines": "25-35",
+          "issue": "Only checks room.isActive, doesn't verify if game.endedAt is null"
+        }
+      ],
+      "impact": "Players joining mid-game mess up the 'all players submitted' logic for early game end"
+    },
+    {
+      "id": 23,
+      "severity": "medium",
+      "category": "Leaderboard/Results Logic",
+      "title": "Leaderboard doesn't show correct order if multiple players submit at same millisecond",
+      "description": "LiveLeaderboard sorts by isCorrect then submittedAt timestamp. But if two users submit at the exact same millisecond, order is undefined.",
+      "files": [
+        {
+          "path": "app/rooms/[id]/live-leaderboard.tsx",
+          "lines": "80-90",
+          "issue": "Sort by 'submittedAt - submittedAt' is 0 for same timestamp, no tiebreaker"
+        }
+      ],
+      "impact": "Leaderboard order is non-deterministic for tied submissions"
+    },
+    {
+      "id": 24,
+      "severity": "medium",
+      "category": "Authentication/Authorization",
+      "title": "Questions API GET has no access control, anyone can view all questions",
+      "description": "The /api/questions GET endpoint is public and unprotected. But questions might contain spoilers or be copyrighted. There's no way to make questions private.",
+      "files": [
+        {
+          "path": "app/api/questions/route.ts",
+          "lines": "55-70",
+          "issue": "GET endpoint has no authentication check, returns all questions"
+        }
+      ],
+      "impact": "Questions are globally visible, privacy/copyright concerns"
+    },
+    {
+      "id": 25,
+      "severity": "low",
+      "category": "Code Quality",
+      "title": "Socket emit errors not handled in code-editor",
+      "description": "When submitting code, socket.emit('code-submitted') is called but result is never checked. If emit fails silently, other players don't see the submission.",
+      "files": [
+        {
+          "path": "app/rooms/[id]/code-editor.tsx",
+          "lines": "200-250",
+          "issue": "socket.emit() called without error callback"
+        }
+      ],
+      "impact": "Silent failure of socket events makes debugging difficult"
+    },
+    {
+      "id": 26,
+      "severity": "low",
+      "category": "Edge Cases",
+      "title": "If question is deleted from database, game results become invalid",
+      "description": "When fetching game results, the question is fetched by ID. If question is deleted (no referential integrity), results page shows 'no question'.",
+      "files": [
+        {
+          "path": "app/api/games/[id]/results/route.ts",
+          "lines": "15-40",
+          "issue": "question query result not checked, could be null if deleted"
+        },
+        {
+          "path": "prisma/schema.prisma",
+          "lines": "60-65",
+          "issue": "Game.question has onDelete: Restrict, which prevents question deletion - this is correct but not enforced everywhere"
+        }
+      ],
+      "impact": "Results page could show incomplete data if question is deleted"
+    },
+    {
+      "id": 27,
+      "severity": "low",
+      "category": "Code Quality",
+      "title": "Judge0 API timeout is hardcoded and may fail for slow solutions",
+      "description": "The waitForResults function polls for 30 attempts with 1 second delay = 30 second total timeout. But cpu_time_limit is set to 20 seconds. A solution at 19 seconds might not complete in time.",
+      "files": [
+        {
+          "path": "lib/piston.ts",
+          "lines": "100-110, 240-250",
+          "issue": "cpu_time_limit: 20 but waitForResults maxAttempts: 30 (30 second real-world timeout)"
+        }
+      ],
+      "impact": "Some valid solutions timeout even though they should pass"
+    },
+    {
+      "id": 28,
+      "severity": "low",
+      "category": "Data Flow Consistency",
+      "title": "Results display tries to fetch gameId from room endpoint but room doesn't return gameId",
+      "description": "ResultsDisplay component fetches room to get gameId, but the /api/rooms/[id] GET endpoint sometimes derives gameId from activeGame which might be null.",
+      "files": [
+        {
+          "path": "app/rooms/[id]/results-display.tsx",
+          "lines": "35-50",
+          "issue": "Fetches room expecting gameId, but room might not have gameId field"
+        },
+        {
+          "path": "app/api/rooms/[id]/route.ts",
+          "lines": "110-120",
+          "issue": "Returns gameId: activeGame?.id but activeGame is null after game ends"
+        }
+      ],
+      "impact": "Results page fails to load if game is already ended and removed from activeGames"
+    }
+  ]
+}

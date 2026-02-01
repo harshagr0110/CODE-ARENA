@@ -64,62 +64,90 @@ export async function POST(request: NextRequest) {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
     const { roomId, code, language = "javascript", feedback, isCorrect, questionId } = await request.json()
-    if (!roomId || !code) return NextResponse.json({ error: "Room ID and code are required" }, { status: 400 })
-
-    // Get room with current game
-    const room = await prisma.room.findUnique({ 
-      where: { id: roomId }
-    })
+    if (!code) return NextResponse.json({ error: "Code is required" }, { status: 400 })
     
-    if (!room || !room.isActive) {
-      return NextResponse.json({ error: "Room is not active" }, { status: 400 })
-    }
-    
-    // Get current game
-    const game = await prisma.game.findFirst({
-      where: {
-        roomId: roomId,
-        endedAt: null
-      }
-    })
-    
-    if (!game) {
-      return NextResponse.json({ error: "No active game found" }, { status: 400 })
+    // Support both multiplayer (roomId) and practice (questionId) modes
+    if (!roomId && !questionId) {
+      return NextResponse.json({ error: "Either roomId (multiplayer) or questionId (practice) is required" }, { status: 400 })
     }
 
-    // Prevent duplicate submissions only if user already solved correctly
-    const existingSubmission = await prisma.submission.findFirst({
-      where: {
-        gameId: game.id,
-        userId: user.id
+    // Get room with current game (for multiplayer mode)
+    let room = null
+    let game = null
+    let qId = questionId
+    
+    if (roomId) {
+      room = await prisma.room.findUnique({ 
+        where: { id: roomId }
+      })
+      
+      if (!room || !room.isActive) {
+        return NextResponse.json({ error: "Room is not active" }, { status: 400 })
       }
-    })
-
-    if (existingSubmission && existingSubmission.isCorrect) {
-      return NextResponse.json({ 
-        error: "You have already submitted a correct solution for this game",
-        submission: {
-          id: existingSubmission.id,
-          isCorrect: existingSubmission.isCorrect
+      
+      // Get current game
+      game = await prisma.game.findFirst({
+        where: {
+          roomId: roomId,
+          endedAt: null
         }
-      }, { status: 409 })
+      })
+      
+      if (!game) {
+        return NextResponse.json({ error: "No active game found" }, { status: 400 })
+      }
+      
+      // CRITICAL: Prevent submissions after game has ended
+      if (game.endedAt) {
+        return NextResponse.json({ error: "Game has already ended" }, { status: 403 })
+      }
+      
+      qId = game.questionId
+    } else if (questionId) {
+      // Practice mode - directly use questionId
+      qId = questionId
+    }
+
+    // Prevent duplicate submissions only for multiplayer mode
+    if (game) {
+      const existingSubmission = await prisma.submission.findFirst({
+        where: {
+          gameId: game.id,
+          userId: user.id
+        }
+      })
+
+      if (existingSubmission && existingSubmission.isCorrect) {
+        return NextResponse.json({ 
+          error: "You have already submitted a correct solution for this game",
+          submission: {
+            id: existingSubmission.id,
+            isCorrect: existingSubmission.isCorrect
+          }
+        }, { status: 409 })
+      }
     }
     
     // Get question
-    const qId = questionId || game.questionId
-    if (!qId) {
-      return NextResponse.json({ error: "No question associated with this game" }, { status: 400 })
+    const qId_Final = qId || game?.questionId
+    if (!qId_Final) {
+      return NextResponse.json({ error: "No question associated with this submission" }, { status: 400 })
     }
     
     const question = await prisma.question.findUnique({
-      where: { id: qId }
+      where: { id: qId_Final }
     })
     
     if (!question) {
       return NextResponse.json({ error: "Question not found" }, { status: 400 })
     }
 
-    let evaluation = {
+    let evaluation: {
+      isCorrect: boolean;
+      feedback: string;
+      executionTime: number;
+      testResults: any[];
+    } = {
       isCorrect: false,
       feedback: "",
       executionTime: 0,
@@ -150,7 +178,7 @@ export async function POST(request: NextRequest) {
           isCorrect: result.isCorrect || false,
           feedback: result.feedback || "Code submitted",
           executionTime: result.executionTime || 0,
-          testResults: [],
+          testResults: result.testResults || [],
         };
       } catch (error) {
         evaluation = {
@@ -162,96 +190,138 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Create or update submission in database (allow resubmissions if incorrect)
-    const submission = existingSubmission
-      ? await prisma.submission.update({
-          where: { id: existingSubmission.id },
-          data: {
-            code: code.trim(),
-            language,
-            isCorrect: evaluation.isCorrect,
-            feedback: evaluation.feedback,
-            executionTime: evaluation.executionTime,
-            submittedAt: new Date(),
-          }
-        })
-      : await prisma.submission.create({
-          data: {
-            id: crypto.randomUUID(),
-            gameId: game.id,
-            userId: user.id,
-            questionId: game.questionId,
-            code: code.trim(),
-            language,
-            isCorrect: evaluation.isCorrect,
-            feedback: evaluation.feedback,
-            executionTime: evaluation.executionTime,
-          }
-        })
+    // Create or update submission in database (only for multiplayer mode with game)
+    // Practice mode doesn't create submission records (use /api/practice/submit instead)
+    let submission = null
+    if (game) {
+      let existingSubmission = await prisma.submission.findFirst({
+        where: {
+          gameId: game.id,
+          userId: user.id
+        }
+      })
+      
+      submission = existingSubmission
+        ? await prisma.submission.update({
+            where: { id: existingSubmission.id },
+            data: {
+              code: code.trim(),
+              language,
+              isCorrect: evaluation.isCorrect,
+              feedback: evaluation.feedback,
+              testResults: evaluation.testResults && evaluation.testResults.length > 0 ? (evaluation.testResults as any) : undefined,
+              executionTime: evaluation.executionTime,
+              submittedAt: new Date(),
+            }
+          })
+        : await prisma.submission.create({
+            data: {
+              gameId: game.id,
+              userId: user.id,
+              questionId: qId_Final,
+              code: code.trim(),
+              language,
+              isCorrect: evaluation.isCorrect,
+              feedback: evaluation.feedback,
+              testResults: evaluation.testResults && evaluation.testResults.length > 0 ? (evaluation.testResults as any) : undefined,
+              executionTime: evaluation.executionTime,
+            }
+          })
+    }
 
-    // Check if this is the first correct submission (instant winner)
-    const correctSubmissions = await prisma.submission.findMany({
-      where: {
-        gameId: game.id,
-        isCorrect: true
-      },
-      orderBy: {
-        submittedAt: 'asc'
-      },
-      include: {
-        user: true
-      }
-    })
-
+    // For multiplayer only: Check for winners
     let shouldEndGame = false
     let winnerData = null
 
-    // If this is the first correct submission, declare winner immediately
-    if (evaluation.isCorrect && correctSubmissions.length === 1 && correctSubmissions[0].userId === user.id) {
-      shouldEndGame = true
-      winnerData = {
-        winnerId: user.id,
-        winnerName: user.username || 'Anonymous'
-      }
-    } else {
-      // Check if all players have submitted (end game even without correct answers)
-      // Standardized participant parsing
-      let participants: any[] = []
-      try {
-        participants = Array.isArray(room.participants)
-          ? (room.participants as any[])
-          : JSON.parse(room.participants as unknown as string)
-      } catch (e) {
-        participants = []
-      }
-
-      const allSubmissions = await prisma.submission.findMany({
-        where: { gameId: game.id },
-        select: { userId: true },
-        distinct: ['userId']
-      })
-
-      const uniqueSubmitters = allSubmissions.map(s => s.userId)
-      const allPlayersSubmitted = participants.every((p: any) => {
-        const participantId = p?.id
-        return participantId && uniqueSubmitters.includes(participantId)
-      })
-
-      if (allPlayersSubmitted) {
-        shouldEndGame = true
-        
-        // Find winner (first person to submit correct, else last to submit)
-        const correctSubmission = await prisma.submission.findFirst({
-          where: { gameId: game.id, isCorrect: true },
-          orderBy: { submittedAt: 'asc' },
-          include: { user: true }
+    if (game && !game.endedAt) { // CRITICAL: Only process if game not already ended
+      // Check if this is the first correct submission (instant winner)
+      if (evaluation.isCorrect) {
+        const gameWithSubmissions = await prisma.game.findUnique({
+          where: { id: game.id },
+          include: {
+            submissions: {
+              where: { isCorrect: true },
+              orderBy: { submittedAt: 'asc' },
+              include: { user: true },
+              take: 1
+            }
+          }
         })
 
-        if (correctSubmission) {
+        // Only if this is the FIRST correct submission and it's from current user
+        const wasFirst = gameWithSubmissions?.submissions.length === 1 && gameWithSubmissions?.submissions[0].userId === user.id
+        
+        if (wasFirst) {
+          shouldEndGame = true
           winnerData = {
-            winnerId: correctSubmission.userId,
-            winnerName: correctSubmission.user.username || 'Anonymous',
+            winnerId: user.id,
+            winnerName: user.username || 'Anonymous'
           }
+          
+          // End the game atomically with optimistic locking - only update if not already ended
+          try {
+            await prisma.game.update({
+              where: { id: game.id, endedAt: null }, // Only update if not already ended
+              data: {
+                winnerId: user.id,
+                endedAt: new Date()
+              }
+            })
+          } catch (e) {
+            // Game already ended by another submission, don't process as winner
+            shouldEndGame = false
+          }
+        }
+      }
+      
+      // If no winner yet, check if all players have submitted
+      if (!shouldEndGame) {
+        let participants: any[] = []
+        try {
+          participants = Array.isArray(room?.participants)
+            ? (room?.participants as any[])
+            : JSON.parse(room?.participants as unknown as string)
+        } catch (e) {
+          participants = []
+        }
+
+        const allSubmissions = await prisma.submission.findMany({
+          where: { gameId: game.id },
+          select: { userId: true },
+          distinct: ['userId']
+        })
+
+        const uniqueSubmitters = allSubmissions.map(s => s.userId)
+        const allPlayersSubmitted = participants.every((p: any) => {
+          const participantId = p?.id
+          return participantId && uniqueSubmitters.includes(participantId)
+        })
+
+        if (allPlayersSubmitted) {
+          shouldEndGame = true
+          
+          // Find winner (first person to submit correct, else first to submit)
+          const correctSubmission = await prisma.submission.findFirst({
+            where: { gameId: game.id, isCorrect: true },
+            orderBy: { submittedAt: 'asc' },
+            include: { user: true }
+          })
+
+          if (correctSubmission) {
+            winnerData = {
+              winnerId: correctSubmission.userId,
+              winnerName: correctSubmission.user.username || 'Anonymous',
+            }
+          }
+          
+          // End game atomically
+          await prisma.game.update({
+            where: { id: game.id },
+            data: {
+              winnerId: correctSubmission?.userId || null,
+              endedAt: new Date()
+            }
+          })
         }
       }
     }
@@ -262,13 +332,19 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       message: "Submission evaluated successfully",
-      submission: {
+      submission: submission ? {
         id: submission.id,
         userId: submission.userId,
         isCorrect: submission.isCorrect,
         feedback: submission.feedback,
+        testResults: submission.testResults || [],
         executionTime: submission.executionTime,
         submittedAt: submission.submittedAt
+      } : {
+        isCorrect: evaluation.isCorrect,
+        feedback: evaluation.feedback,
+        testResults: evaluation.testResults || [],
+        executionTime: evaluation.executionTime,
       },
       shouldEndGame: shouldEndGame,
       winner: winnerData

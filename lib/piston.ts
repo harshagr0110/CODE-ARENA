@@ -39,6 +39,7 @@ interface ExecutionResult {
     input: string
     expectedOutput: string
     actualOutput: string
+    errorMessage?: string
     passed: boolean
   }>
 }
@@ -59,14 +60,19 @@ function sanitizeInput(input: string): string {
     .replace(/\r/g, '\n')
 }
 
-// Better C++ code wrapper
+// Better C++ code wrapper - handle multiline indentation correctly
 function wrapCppCode(code: string): string {
   // Don't modify the code if it has main function defined
   if (code.includes('main()') || code.includes('main(')) {
     return code;
   }
   
-  // Simple wrapper for code fragments
+  // Indent all lines of user code properly
+  const indentedCode = code
+    .split('\n')
+    .map(line => '    ' + line)
+    .join('\n')
+  
   return `#include <iostream>
 #include <vector>
 #include <string>
@@ -74,7 +80,7 @@ function wrapCppCode(code: string): string {
 using namespace std;
 
 int main() {
-    ${code}
+${indentedCode}
     return 0;
 }`;
 }
@@ -253,45 +259,46 @@ export async function executeCode(
       const actualOutput = result.stdout?.trim() || ''
       const expectedOutput = testCase.expectedOutput.trim()
       let passed = actualOutput === expectedOutput
-      let finalOutput = actualOutput
+      let errorMessage: string | undefined
 
       if (result.status.id === 3) { // Accepted
         // Code executed successfully, check if output matches
         if (actualOutput !== expectedOutput) {
           allPassed = false
           passed = false
-          finalOutput = `Wrong Answer: Expected "${expectedOutput}" but got "${actualOutput}"`
+          errorMessage = `Expected "${expectedOutput}" but got "${actualOutput}"`
         }
       } else if (result.status.id === 4) { // Wrong Answer
         allPassed = false
         passed = false
-        finalOutput = `Wrong Answer: ${result.stderr || result.compile_output || 'Output does not match expected result'}`
+        errorMessage = result.stderr || result.compile_output || 'Output does not match expected result'
       } else if (result.status.id === 5) { // Time Limit Exceeded
         allPassed = false
         passed = false
-        finalOutput = 'Time Limit Exceeded: Your code took too long to execute.'
+        errorMessage = 'Time Limit Exceeded: Your code took too long to execute.'
       } else if (result.status.id === 6) { // Memory Limit Exceeded
         allPassed = false
         passed = false
-        finalOutput = 'Memory Limit Exceeded: Your code used too much memory.'
+        errorMessage = 'Memory Limit Exceeded: Your code used too much memory.'
       } else if (result.status.id === 7) { // Runtime Error
         allPassed = false
         passed = false
-        finalOutput = `Runtime Error: ${result.stderr || result.compile_output || 'Program crashed during execution'}`
+        errorMessage = result.stderr || result.compile_output || 'Program crashed during execution'
       } else if (result.status.id === 8) { // Compilation Error
         allPassed = false
         passed = false
-        finalOutput = `Compilation Error: ${result.compile_output || result.stderr || 'Code has syntax errors'}`
+        errorMessage = result.compile_output || result.stderr || 'Code has syntax errors'
       } else {
         allPassed = false
         passed = false
-        finalOutput = getErrorMessage(result.status, result.stderr, result.compile_output)
+        errorMessage = getErrorMessage(result.status, result.stderr, result.compile_output)
       }
 
       testResults.push({
         input: testCase.input,
         expectedOutput: testCase.expectedOutput,
-        actualOutput: finalOutput,
+        actualOutput: actualOutput, // Always store the actual stdout
+        errorMessage: errorMessage, // Separately store error message
         passed,
       })
 
@@ -305,7 +312,8 @@ export async function executeCode(
       testResults.push({
         input: testCase.input,
         expectedOutput: testCase.expectedOutput,
-        actualOutput: `Execution Error: ${errorMessage}`,
+        actualOutput: '',
+        errorMessage: `Execution Error: ${errorMessage}`,
         passed: false,
       })
     }

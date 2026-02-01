@@ -51,6 +51,7 @@ model Submission {
   language        String   @default("javascript")
   isCorrect       Boolean  @default(false) @map("is_correct")
   feedback        String?  @map("feedback")
+  testResults     Json?    @map("test_results") // Array of {input, expectedOutput, actualOutput, passed}
   executionTime   Int?     @default(0) @map("execution_time") // in milliseconds
   submittedAt     DateTime @default(now()) @map("submitted_at")
 

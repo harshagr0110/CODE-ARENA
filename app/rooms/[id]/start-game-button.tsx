@@ -69,6 +69,8 @@ const StartGameButton: React.FC<StartGameButtonProps> = ({
           durationSeconds: data?.game?.durationSeconds || durationSeconds || 300,
           startTime: serverStartTime,
         })
+        // Socket server will broadcast to all clients, including this one
+        // The RoomRealtime component will handle the countdown and refresh
       }
     } catch (err: any) {
       setError(err.message || "Failed to start game")

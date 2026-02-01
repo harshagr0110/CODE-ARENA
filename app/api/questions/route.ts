@@ -16,15 +16,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
-    // Validate and clean test cases
+    // Validate and clean test cases - allow empty input but not empty expectedOutput
     const cleanedTestCases = testCases
-      .filter((testCase: any) => testCase && testCase.input !== undefined && testCase.expectedOutput !== undefined)
+      .filter((testCase: any) => testCase && testCase.expectedOutput !== undefined && testCase.expectedOutput !== null)
       .map((testCase: any) => ({
-        input: testCase.input.toString().trim(),
+        input: testCase.input !== undefined && testCase.input !== null ? testCase.input.toString() : '',
         expectedOutput: testCase.expectedOutput.toString().trim(),
         explanation: testCase.explanation?.toString().trim() || undefined
       }))
-      .filter((testCase: any) => testCase.input || testCase.expectedOutput)
+      .filter((testCase: any) => testCase.expectedOutput.length > 0) // Only filter out empty expectedOutput
 
     if (cleanedTestCases.length === 0) {
       return NextResponse.json({ error: "At least one valid test case is required" }, { status: 400 })

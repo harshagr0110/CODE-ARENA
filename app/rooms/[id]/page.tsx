@@ -24,39 +24,38 @@ export default function RoomPage() {
   const [user, setUser] = useState<{ id: string; username: string } | null>(null)
   const [question, setQuestion] = useState<any | null>(null)
   const [timeLeft, setTimeLeft] = useState<number | null>(null)
-  const [refreshTick, setRefreshTick] = useState(0)
+  const [countdown, setCountdown] = useState<number | null>(null) // 5-second countdown before game starts
+  const [refreshCount, setRefreshCount] = useState(0) // Trigger for data refetch
   
   // Navigation guard to prevent race conditions
   const hasNavigatedRef = React.useRef(false)
+  const pollIntervalRef = React.useRef<NodeJS.Timeout | null>(null)
+  const countdownStartedRef = React.useRef(false)
 
-  // Fetch current user and room details
+  // Fetch current user and room details - also refetch on refreshCount changes (for socket-triggered updates)
   useEffect(() => {
     if (!roomId) return
     let cancelled = false
     async function load() {
-      setLoading(true)
+      if (refreshCount === 0) setLoading(true) // Only show loading on initial load
       setError(null)
       try {
-        // Single API call to get room with all needed data
-        const roomRes = await fetch(`/api/rooms/${roomId}`)
+        // Parallel API calls for faster loading
+        const [roomRes, meRes] = await Promise.all([
+          fetch(`/api/rooms/${roomId}`),
+          fetch("/api/me").catch(() => null)
+        ])
 
         if (!roomRes.ok) {
           const rj = await roomRes.json().catch(() => ({}))
           throw new Error(rj.error || `Failed to load room (${roomRes.status})`)
         }
         const roomJson = await roomRes.json()
+        const me = meRes?.ok ? await meRes.json().catch(() => null) : null
 
-        // User data is inferred from participants (set by room-client.tsx)
-        let me: any = null
-        const meRes = await fetch("/api/me").catch(() => null)
-        if (meRes?.ok) {
-          me = await meRes.json().catch(() => null)
-        }
-
-        // If room has an active question, fetch it once
+        // If room has an active question, fetch it
         let questionData = null
         const questionId = (roomJson as any).questionId
-
         if (questionId) {
           const questionRes = await fetch(`/api/questions/${questionId}`).catch(() => null)
           if (questionRes?.ok) {
@@ -79,7 +78,7 @@ export default function RoomPage() {
     return () => {
       cancelled = true
     }
-  }, [roomId, refreshTick])
+  }, [roomId, refreshCount])
 
   // Derive computed flags
   const participants: any[] = useMemo(() => {
@@ -94,21 +93,38 @@ export default function RoomPage() {
   const currentUserId = user?.id
   const isParticipant = currentUserId ? participants.some((p: any) => p.id === currentUserId) : false
   const isHost = currentUserId ? room?.hostId === currentUserId : false
-  const isGameInProgress = !!question && room?.isActive // Game in progress if room is active and question loaded
-  const isWaiting = room?.isActive && !question // Waiting if room is active but no game started yet
+  const isGameInProgress = !!question && room?.isActive && countdown === null // Game in progress if room is active, question loaded, and countdown finished
+  const isWaiting = room?.isActive && !question && countdown === null // Waiting if room is active but no game started yet
   
-  // Game timer - use server time for accurate sync
+  // Countdown timer before game starts (5 seconds)
   useEffect(() => {
-    if (!isGameInProgress || !room?.startedAt) {
+    if (countdown === null || countdown <= 0) {
+      return
+    }
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev === null || prev <= 1) {
+          return null // Clear countdown when it reaches 1 or less
+        }
+        return prev - 1
+      })
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [countdown])
+
+  // Game timer - account for 5-second countdown delay
+  useEffect(() => {
+    if (!isGameInProgress || !room?.startedAt || countdown !== null) {
       setTimeLeft(null)
       return
     }
     const duration = room.durationSeconds ?? 300
-    const gameStartTime = new Date(room.startedAt).getTime()
+    // Game actually starts 5 seconds after startedAt (countdown delay)
+    const actualStartTime = new Date(room.startedAt).getTime() + 5000
     
     const tick = () => {
       const now = Date.now()
-      const remaining = Math.max(0, Math.floor((gameStartTime + duration * 1000 - now) / 1000))
+      const remaining = Math.max(0, Math.floor((actualStartTime + duration * 1000 - now) / 1000))
       setTimeLeft(remaining)
       
       // Auto-navigate to results when time expires (only once)
@@ -122,15 +138,41 @@ export default function RoomPage() {
     tick()
     const id = setInterval(tick, 1000)
     return () => clearInterval(id)
-  }, [isGameInProgress, room?.startedAt, room?.durationSeconds, roomId, router])
-  // Reset navigation guard when game starts or room changes
+  }, [isGameInProgress, room?.startedAt, room?.durationSeconds, countdown, roomId, router])
+
+  // Reset navigation guard and countdown flag when waiting
   useEffect(() => {
     if (isWaiting) {
       hasNavigatedRef.current = false
+      countdownStartedRef.current = false
     }
   }, [isWaiting])
+
+  // Poll for room updates while waiting for game (fallback for socket events)
+  useEffect(() => {
+    if (!roomId || !isWaiting) {
+      // Clear polling when not waiting
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current)
+        pollIntervalRef.current = null
+      }
+      return
+    }
+
+    // Poll every 3 seconds while waiting for game to start
+    pollIntervalRef.current = setInterval(() => {
+      setRefreshCount(c => c + 1)
+    }, 3000)
+
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current)
+        pollIntervalRef.current = null
+      }
+    }
+  }, [isWaiting, roomId])
   
-  const handleRefresh = () => router.refresh()
+  const handleRefresh = () => setRefreshCount(c => c + 1)
 
   return (
     <MainLayout>
@@ -153,8 +195,24 @@ export default function RoomPage() {
               roomId={roomId} 
               userId={currentUserId || "guest"}
               username={user?.username || "Player"}
-              onGameStart={() => setRefreshTick((t) => t + 1)}
-              onParticipantsChange={() => setRefreshTick((t) => t + 1)}
+              onGameStart={() => {
+                setCountdown(5) // Start 5-second countdown
+              }}
+              onQuestionReady={(clearCountdown = false) => {
+                // Refresh to load question (can be called multiple times during countdown for pre-loading)
+                setRefreshCount(c => c + 1)
+                // Clear countdown on final call
+                if (clearCountdown) {
+                  setCountdown(null)
+                }
+              }}
+              onPlayerJoined={() => {
+                // Debounced refresh - only refresh if not already refreshing
+                setRefreshCount(c => c + 1)
+              }}
+              onPlayerLeft={() => {
+                setRefreshCount(c => c + 1)
+              }}
             >
               {/* Room header with info and actions */}
               <div className="flex items-start justify-between mb-6">
@@ -194,7 +252,13 @@ export default function RoomPage() {
               {/* Join prompt if not a participant */}
               {!isParticipant && (
                 <div className="mb-6">
-                  <RoomClient roomId={roomId} userId={currentUserId || "guest"} initialJoined={false} />
+                  <RoomClient 
+                    roomId={roomId} 
+                    userId={currentUserId || "guest"} 
+                    username={user?.username || "Player"} 
+                    initialJoined={false}
+                    onJoined={() => setRefreshCount(c => c + 1)}
+                  />
                 </div>
               )}
 
@@ -222,6 +286,13 @@ export default function RoomPage() {
                         {!isHost && participants.length < 2 && (
                           <p className="text-sm text-amber-600">Need at least 2 players to start a game.</p>
                         )}
+                      </CardContent>
+                    </Card>
+                  ) : countdown !== null ? (
+                    <Card>
+                      <CardContent className="text-center py-20">
+                        <div className="text-6xl font-bold text-blue-600 mb-4">{countdown}</div>
+                        <p className="text-xl text-gray-600">Game starting...</p>
                       </CardContent>
                     </Card>
                   ) : isGameInProgress ? (

@@ -68,6 +68,8 @@ export function CodeEditor({ roomId, userId, username = "Player", question: init
   const [loading, setLoading] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [disqualified, setDisqualified] = useState(false)
+  const [testResults, setTestResults] = useState<any[]>([])
+  const [submissionFeedback, setSubmissionFeedback] = useState("")
   const [mode, setMode] = useState('normal')
   const [question, setQuestion] = useState<any>(initialQuestion)
   const [timeLeft, setTimeLeft] = useState<number | null>(parentTimeLeft ?? null)
@@ -214,6 +216,8 @@ export function CodeEditor({ roomId, userId, username = "Player", question: init
 
       if (submissionData.submission?.isCorrect) {
         toast.success("✅ Correct solution!")
+        setTestResults(submissionData.submission?.testResults || [])
+        setSubmissionFeedback(submissionData.submission?.feedback || "")
         setSubmitted(true)
 
         // If game ended, navigate to results after short delay
@@ -223,7 +227,10 @@ export function CodeEditor({ roomId, userId, username = "Player", question: init
           }, 2000)
         }
       } else {
-        toast.error(submissionData.submission?.feedback || "❌ Incorrect solution")
+        const feedback = submissionData.submission?.feedback || "❌ Incorrect solution"
+        toast.error(feedback)
+        setTestResults(submissionData.submission?.testResults || [])
+        setSubmissionFeedback(feedback)
       }
     } catch (error) {
       toast.error("Submission failed. Please try again.")
@@ -246,9 +253,51 @@ export function CodeEditor({ roomId, userId, username = "Player", question: init
   if (submitted) {
     return (
       <Card>
-        <CardContent className="text-center py-8">
-          <h3 className="text-lg font-medium text-gray-900 mb-2">✅ Solution Submitted!</h3>
-          <p className="text-gray-600">You can now watch other players compete.</p>
+        <CardContent className="space-y-4 py-8">
+          <div className="text-center">
+            <h3 className="text-lg font-medium text-gray-900 mb-2">✅ Solution Submitted!</h3>
+            <p className="text-sm text-gray-600 mb-4">{submissionFeedback}</p>
+          </div>
+          
+          {/* Test Results Display */}
+          {testResults.length > 0 && (
+            <div className="space-y-2">
+              <h4 className="font-medium text-sm">Test Case Results:</h4>
+              <div className="space-y-2">
+                {testResults.map((result, idx) => (
+                  <div key={idx} className="flex items-start gap-3 p-2 bg-gray-50 rounded border">
+                    <div className={`text-lg font-bold pt-0.5 ${result.passed ? 'text-green-600' : 'text-red-600'}`}>
+                      {result.passed ? '✅' : '❌'}
+                    </div>
+                    <div className="flex-1 text-xs">
+                      <div className="font-mono text-gray-600">
+                        <span className="font-medium">Input:</span> {result.input.substring(0, 50)}{result.input.length > 50 ? '...' : ''}
+                      </div>
+                      <div className="font-mono text-gray-600">
+                        <span className="font-medium">Expected:</span> {result.expectedOutput.substring(0, 50)}{result.expectedOutput.length > 50 ? '...' : ''}
+                      </div>
+                      {!result.passed && (
+                        <>
+                          {result.actualOutput && (
+                            <div className="font-mono text-gray-600">
+                              <span className="font-medium">Got:</span> {result.actualOutput.substring(0, 50)}{result.actualOutput.length > 50 ? '...' : ''}
+                            </div>
+                          )}
+                          {result.errorMessage && (
+                            <div className="font-mono text-red-600 mt-1">
+                              <span className="font-medium">Error:</span> {result.errorMessage.substring(0, 80)}{result.errorMessage.length > 80 ? '...' : ''}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          <p className="text-sm text-gray-600 text-center mt-4">You can now watch other players compete.</p>
         </CardContent>
       </Card>
     )

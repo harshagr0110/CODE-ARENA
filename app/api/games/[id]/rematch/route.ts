@@ -3,9 +3,11 @@ import { getCurrentUser } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import * as socketClient from 'socket.io-client'
 
-const socket = socketClient.connect('http://localhost:3001')
+// CRITICAL: Do NOT create socket at module level - causes memory leaks
+// Socket connections should be ephemeral, created per-request
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  let socket: ReturnType<typeof socketClient.connect> | null = null
   try {
     const { id: roomId } = await context.params;
     const user = await getCurrentUser()
@@ -32,10 +34,22 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
         isActive: true,
       },
     })
+    // Create socket connection for this request only
+    socket = socketClient.connect('http://localhost:3001', {
+      reconnection: false,
+      reconnectionDelay: 0
+    })
+    
     // Notify all players via socket
     socket.emit("rematch-waiting", { roomId })
+    
     return NextResponse.redirect(`/rooms/${roomId}`)
   } catch (error) {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+  } finally {
+    // CRITICAL: Always disconnect socket to prevent memory leaks
+    if (socket) {
+      socket.disconnect()
+    }
   }
 }

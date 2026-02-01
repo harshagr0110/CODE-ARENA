@@ -85,23 +85,17 @@ export default function ResultsPage() {
     router.push("/rooms")
   }
 
-  const handleRematch = () => {
-    router.push(`/rooms/${roomId}`)
-  }
-
   return (
     <MainLayout>
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold">Game Results</h1>
-          <div className="space-x-2">
-            <Button onClick={handleRematch} variant="default">
-              Rematch
-            </Button>
-            <Button onClick={handleGoBack} variant="outline">
-              Back to Rooms
-            </Button>
+      <div className="container mx-auto px-4 py-6">
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Game Results</h1>
+            <p className="text-sm text-gray-500 mt-1">View final rankings and submissions</p>
           </div>
+          <Button onClick={handleGoBack} variant="outline" size="sm">
+            ← Back to Rooms
+          </Button>
         </div>
 
         {loading ? (
@@ -112,22 +106,24 @@ export default function ResultsPage() {
 
             {/* Finish Game Button - Only for Host */}
             {isHost && (
-              <Card className="mt-8 bg-yellow-50 border-yellow-200">
-                <CardHeader>
-                  <CardTitle className="text-lg">Host Controls</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <p className="text-sm text-gray-700">
-                    Click below to finish this game and delete the room along with all related data.
-                  </p>
-                  <Button
-                    onClick={handleFinishGame}
-                    disabled={finishingGame}
-                    variant="destructive"
-                    className="w-full"
-                  >
-                    {finishingGame ? "Finishing..." : "Finish Game & Delete Room"}
-                  </Button>
+              <Card className="mt-8 border-yellow-200 bg-yellow-50/50">
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-medium text-gray-700">Host Controls</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Finish game to delete room and end the session
+                      </p>
+                    </div>
+                    <Button
+                      onClick={handleFinishGame}
+                      disabled={finishingGame}
+                      variant="destructive"
+                      size="sm"
+                    >
+                      {finishingGame ? "Finishing..." : "Finish Game"}
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             )}
