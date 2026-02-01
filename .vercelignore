@@ -1,0 +1,6 @@
+# Ignore files that shouldn't be deployed to Vercel
+scripts/
+.env
+.env.local
+*.log
+.DS_Store

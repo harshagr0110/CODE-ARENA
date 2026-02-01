@@ -35,7 +35,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       },
     })
     // Create socket connection for this request only
-    socket = socketClient.connect('http://localhost:3001', {
+    // Use environment variable for socket URL
+    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_IO_URL || "http://localhost:3001"
+    socket = socketClient.connect(socketUrl, {
       reconnection: false,
       reconnectionDelay: 0
     })
